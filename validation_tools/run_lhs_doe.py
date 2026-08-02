@@ -1,16 +1,3 @@
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
 
 
 from __future__ import annotations
@@ -90,6 +77,12 @@ def evaluate_case(case: dict) -> dict:
         d_inj_prod_m=case["d_inj_prod_m"],
     )
     bhp_status, bhp_violators = _bhp_status(result)
+    pressure_cv = objectives.compute_F3(
+        result.get("pressure_heterogeneity_injend_std_mpa", np.nan),
+        result.get("pressure_heterogeneity_injend_mean_mpa", np.nan),
+    )
+    if pressure_cv >= objectives.PENALTY_VALUE:
+        pressure_cv = np.nan
 
     return {
         "sample_index": idx,
@@ -115,6 +108,17 @@ def evaluate_case(case: dict) -> dict:
         "prod_watvolsc_final_per_well": np.asarray(
             result.get("prod_watvolsc_final_per_well", np.array([])), dtype=float
         ),
+        "plume_area_sg0p1_km2": float(result.get("plume_area_sg0p1_km2", np.nan)),
+        "plume_n_columns_sg0p1": int(result.get("plume_n_columns_sg0p1", -1)),
+        "plume_status": str(result.get("plume_status", "")),
+        "plume_day": float(result.get("plume_day", np.nan)),
+        "pressure_heterogeneity_injend_std_mpa": float(
+            result.get("pressure_heterogeneity_injend_std_mpa", np.nan)
+        ),
+        "pressure_heterogeneity_injend_mean_mpa": float(
+            result.get("pressure_heterogeneity_injend_mean_mpa", np.nan)
+        ),
+        "pressure_heterogeneity_cv": float(pressure_cv),
     }
 
 
@@ -185,6 +189,17 @@ def write_results(out_path: Path, meta: dict, rows: list[dict]) -> None:
             r["prod_watvolsc_final_per_well"] if len(r["prod_watvolsc_final_per_well"]) == 5 else np.full(5, np.nan)
             for r in rows
         ]).astype(float),
+        plume_area_sg0p1_km2=np.array([r["plume_area_sg0p1_km2"] for r in rows], dtype=float),
+        plume_n_columns_sg0p1=np.array([r["plume_n_columns_sg0p1"] for r in rows], dtype=np.int32),
+        plume_status=np.array([r["plume_status"] for r in rows], dtype="<U64"),
+        plume_day=np.array([r["plume_day"] for r in rows], dtype=float),
+        pressure_heterogeneity_injend_std_mpa=np.array(
+            [r["pressure_heterogeneity_injend_std_mpa"] for r in rows], dtype=float
+        ),
+        pressure_heterogeneity_injend_mean_mpa=np.array(
+            [r["pressure_heterogeneity_injend_mean_mpa"] for r in rows], dtype=float
+        ),
+        pressure_heterogeneity_cv=np.array([r["pressure_heterogeneity_cv"] for r in rows], dtype=float),
         inj_wells=np.array([meta_case["inj_wells"] for meta_case in rows], dtype=np.int32).reshape(n, 5, 2),
         prod_wells=np.array([meta_case["prod_wells"] for meta_case in rows], dtype=np.int32).reshape(n, 5, 2),
     )

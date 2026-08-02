@@ -1,10 +1,3 @@
-\
-\
-\
-\
-\
-\
-\
 
 
 from __future__ import annotations
@@ -164,9 +157,20 @@ def build_eval_result(
     out["gas_final_mol"] = float(gas[-1]) if gas is not None and len(gas) > 0 else 0.0
     out["inj_cum_mol"] = float(inj[-1]) if inj is not None and len(inj) > 0 else 0.0
     out["dissolved_net_mol"] = out["aqu_final_mol"] - out["aqu_initial_mol"]
-    out["mobile_krg_fraction"] = (
-        float(sr3["mobile_krg_fraction"])
-        if sr3.get("mobile_krg_fraction") is not None
+    out["plume_area_sg0p1_km2"] = (
+        float(sr3["plume_area_sg0p1_km2"])
+        if sr3.get("plume_area_sg0p1_km2") is not None
+        else np.nan
+    )
+    out["plume_n_columns_sg0p1"] = (
+        int(sr3["plume_n_columns_sg0p1"])
+        if sr3.get("plume_n_columns_sg0p1") is not None
+        else -1
+    )
+    out["plume_status"] = str(sr3.get("plume_status") or "")
+    out["plume_day"] = (
+        float(sr3["plume_day"])
+        if sr3.get("plume_day") is not None
         else np.nan
     )
     out["pressure_heterogeneity_injend_std_mpa"] = (
@@ -270,13 +274,22 @@ def build_row(idx: int, run_dir: Path | None, lhs: dict, sim_years: int) -> dict
     prod_wat = np.asarray(eval_result.get("prod_watvolsc_final_per_well", np.array([])), dtype=float)
     if len(prod_wat) != 5:
         prod_wat = np.full(5, np.nan)
-    mobile_krg_fraction = float(eval_result.get("mobile_krg_fraction", np.nan))
+    plume_area_sg0p1_km2 = float(eval_result.get("plume_area_sg0p1_km2", np.nan))
+    plume_n_columns_sg0p1 = int(eval_result.get("plume_n_columns_sg0p1", -1))
+    plume_status = str(eval_result.get("plume_status", ""))
+    plume_day = float(eval_result.get("plume_day", np.nan))
     pressure_heterogeneity_injend_std_mpa = float(
         eval_result.get("pressure_heterogeneity_injend_std_mpa", np.nan)
     )
     pressure_heterogeneity_injend_mean_mpa = float(
         eval_result.get("pressure_heterogeneity_injend_mean_mpa", np.nan)
     )
+    pressure_heterogeneity_cv = objectives.compute_F3(
+        pressure_heterogeneity_injend_std_mpa,
+        pressure_heterogeneity_injend_mean_mpa,
+    )
+    if pressure_heterogeneity_cv >= objectives.PENALTY_VALUE:
+        pressure_heterogeneity_cv = np.nan
 
     return {
         "sample_index": idx,
@@ -295,9 +308,13 @@ def build_row(idx: int, run_dir: Path | None, lhs: dict, sim_years: int) -> dict
         "inj_rates_surface_nm3_day": inj_rates,
         "inj_bhp_max_per_well": inj_bhp,
         "prod_watvolsc_final_per_well": prod_wat,
-        "mobile_krg_fraction": mobile_krg_fraction,
+        "plume_area_sg0p1_km2": plume_area_sg0p1_km2,
+        "plume_n_columns_sg0p1": plume_n_columns_sg0p1,
+        "plume_status": plume_status,
+        "plume_day": plume_day,
         "pressure_heterogeneity_injend_std_mpa": pressure_heterogeneity_injend_std_mpa,
         "pressure_heterogeneity_injend_mean_mpa": pressure_heterogeneity_injend_mean_mpa,
+        "pressure_heterogeneity_cv": pressure_heterogeneity_cv,
         "inj_wells": inj_wells,
         "prod_wells": prod_wells,
     }
@@ -326,13 +343,17 @@ def write_results(out_path: Path, rows: list[dict]) -> None:
         inj_rates_surface_nm3_day=np.vstack([r["inj_rates_surface_nm3_day"] for r in rows]).astype(float),
         inj_bhp_max_per_well=np.vstack([r["inj_bhp_max_per_well"] for r in rows]).astype(float),
         prod_watvolsc_final_per_well=np.vstack([r["prod_watvolsc_final_per_well"] for r in rows]).astype(float),
-        mobile_krg_fraction=np.array([r["mobile_krg_fraction"] for r in rows], dtype=float),
+        plume_area_sg0p1_km2=np.array([r["plume_area_sg0p1_km2"] for r in rows], dtype=float),
+        plume_n_columns_sg0p1=np.array([r["plume_n_columns_sg0p1"] for r in rows], dtype=np.int32),
+        plume_status=np.array([r["plume_status"] for r in rows], dtype="<U64"),
+        plume_day=np.array([r["plume_day"] for r in rows], dtype=float),
         pressure_heterogeneity_injend_std_mpa=np.array(
             [r["pressure_heterogeneity_injend_std_mpa"] for r in rows], dtype=float
         ),
         pressure_heterogeneity_injend_mean_mpa=np.array(
             [r["pressure_heterogeneity_injend_mean_mpa"] for r in rows], dtype=float
         ),
+        pressure_heterogeneity_cv=np.array([r["pressure_heterogeneity_cv"] for r in rows], dtype=float),
         inj_wells=np.array([r["inj_wells"] for r in rows], dtype=np.int32).reshape(n, 5, 2),
         prod_wells=np.array([r["prod_wells"] for r in rows], dtype=np.int32).reshape(n, 5, 2),
     )

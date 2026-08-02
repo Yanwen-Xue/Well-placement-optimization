@@ -1,12 +1,3 @@
-\
-\
-\
-\
-\
-\
-\
-\
-\
 
 
 from __future__ import annotations
@@ -51,6 +42,16 @@ def load_dataset(results_path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray
         "sim_years": np.asarray(data["sim_years"], dtype=int) if "sim_years" in data.files else None,
         "failure_reason": np.asarray(data["failure_reason"]) if "failure_reason" in data.files else None,
         "success_mask": np.asarray(data["success_mask"], dtype=bool),
+        "pressure_heterogeneity_injend_std_mpa": (
+            np.asarray(data["pressure_heterogeneity_injend_std_mpa"], dtype=float)
+            if "pressure_heterogeneity_injend_std_mpa" in data.files
+            else None
+        ),
+        "pressure_heterogeneity_injend_mean_mpa": (
+            np.asarray(data["pressure_heterogeneity_injend_mean_mpa"], dtype=float)
+            if "pressure_heterogeneity_injend_mean_mpa" in data.files
+            else None
+        ),
     }
     return X, y, failure_mask, info
 
@@ -231,6 +232,11 @@ def main() -> int:
     parser.add_argument("--seeds", default=str(DEFAULT_SEEDS), help="path to opt_seeds*.npz containing prescreen maps")
     parser.add_argument("--no-prescreen-features", action="store_true", help="disable prescreen-map feature augmentation")
     parser.add_argument(
+        "--f3-component-mode",
+        action="store_true",
+        help="train pressure std and mean components and reconstruct F3 as std/mean",
+    )
+    parser.add_argument(
         "--feature-mode",
         choices=["coords", "prescreen", "prescreen_geometry", "prescreen_geometry_local"],
         default="prescreen",
@@ -246,6 +252,15 @@ def main() -> int:
     report_out.parent.mkdir(parents=True, exist_ok=True)
 
     X, y, failure_mask, info = load_dataset(results_path)
+    if args.f3_component_mode:
+        pressure_std = info["pressure_heterogeneity_injend_std_mpa"]
+        pressure_mean = info["pressure_heterogeneity_injend_mean_mpa"]
+        if pressure_std is None or pressure_mean is None:
+            raise KeyError(
+                "f3-component-mode requires pressure_heterogeneity_injend_std_mpa "
+                "and pressure_heterogeneity_injend_mean_mpa in the results NPZ"
+            )
+        y = np.column_stack([y[:, 0], y[:, 1], pressure_std, pressure_mean])
     dataset_summary = summarize_dataset(info, failure_mask)
     if dataset_summary["n_success"] < 5:
         raise ValueError("too few successful samples for surrogate regression")
@@ -316,6 +331,7 @@ def main() -> int:
         xgb_classifier_params=xgb_classifier_params,
         early_stopping_rounds=early_stopping_rounds,
         validation_fraction=float(args.validation_fraction),
+        f3_component_mode=bool(args.f3_component_mode),
     )
     cv = model.cross_validate(
         X[train_idx],
@@ -373,6 +389,7 @@ def main() -> int:
         "model_path": str(model_out),
         "with_uncertainty": bool(args.with_uncertainty),
         "with_failure_classifier": not bool(args.no_failure_classifier),
+        "f3_component_mode": bool(args.f3_component_mode),
         "prescreen_features": feature_report,
         "ref_mode": args.ref_mode,
         "xgb_params": xgb_params,

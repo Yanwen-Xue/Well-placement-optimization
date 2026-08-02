@@ -259,8 +259,8 @@ def main() -> None:
                     "relative_dat_path": rel_dat,
                     "source_rank": meta["source_rank"],
                     "pred_pressure_rise_pct": meta["pred_pressure_rise_pct"],
-                    "pred_dissolution_pct": meta["pred_dissolution_pct"],
-                    "pred_brine_m3": meta["pred_brine_m3"],
+                    "pred_F2_plume_area_sg0p1_km2": meta.get("pred_F2_plume_area_sg0p1_km2"),
+                    "pred_F3_pressure_heterogeneity_cv": meta.get("pred_F3_pressure_heterogeneity_cv"),
                     "inj_wells": meta["inj_wells"],
                     "prod_wells": meta["prod_wells"],
                 }

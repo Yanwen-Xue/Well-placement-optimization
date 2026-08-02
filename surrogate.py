@@ -1,10 +1,3 @@
-\
-\
-\
-\
-\
-\
-\
 
 from __future__ import annotations
 
@@ -43,6 +36,7 @@ N_INJ = 5
 N_PRD = 5
 N_DIM = N_INJ * 2 + N_PRD * 2
 TARGET_LABELS = ("F1", "F2", "F3")
+COMPONENT_TARGET_LABELS = ("F1", "F2", "F3_pressure_std", "F3_pressure_mean")
 _PENALTY_THRESH = 1e8
 _MIN_CLASS_SAMPLES = 5
 
@@ -67,24 +61,23 @@ def _summarize(values):
     return dict(mean=float(np.mean(arr)), std=float(np.std(arr)))
 
 
-def _resolve_target_params(base_params, target_params=None):
+def _resolve_target_params(base_params, target_params=None, labels=TARGET_LABELS):
     base = dict(base_params)
-    out = [dict(base) for _ in TARGET_LABELS]
+    labels = tuple(labels)
+    out = [dict(base) for _ in labels]
     if target_params is None:
         return out
 
     if isinstance(target_params, (list, tuple)):
-        if len(target_params) != len(TARGET_LABELS):
-            raise ValueError(
-                f"xgb_target_params list must have {len(TARGET_LABELS)} entries"
-            )
+        if len(target_params) != len(labels):
+            raise ValueError(f"xgb_target_params list must have {len(labels)} entries")
         for k, override in enumerate(target_params):
             if override:
                 out[k].update(dict(override))
         return out
 
     if isinstance(target_params, dict):
-        for k, label in enumerate(TARGET_LABELS):
+        for k, label in enumerate(labels):
             override = (
                 target_params.get(label)
                 or target_params.get(label.lower())
@@ -95,7 +88,7 @@ def _resolve_target_params(base_params, target_params=None):
                 out[k].update(dict(override))
         return out
 
-    raise TypeError("xgb_target_params must be None, a 3-list, or a dict")
+    raise TypeError("xgb_target_params must be None, a target-parameter list, or a dict")
 
 
 def _align_one(x, ref):
@@ -177,15 +170,19 @@ class SurrogateModel:
         xgb_classifier_params: dict | None = None,
         early_stopping_rounds: int | None = None,
         validation_fraction: float = 0.20,
+        f3_component_mode: bool = False,
     ):
         self.feature_extractor = feature_extractor
         self.with_uncertainty = with_uncertainty
         self.with_failure_classifier = with_failure_classifier
         self.ref_mode = ref_mode
+        self.f3_component_mode = bool(f3_component_mode)
+        self.target_labels = COMPONENT_TARGET_LABELS if self.f3_component_mode else TARGET_LABELS
         self.xgb_params = {**self.DEFAULT_PARAMS, **(xgb_params or {})}
         self.xgb_params_by_target = _resolve_target_params(
             self.xgb_params,
             xgb_target_params,
+            labels=self.target_labels,
         )
         self.xgb_classifier_params = {
             **self.DEFAULT_CLF_PARAMS,
@@ -193,6 +190,9 @@ class SurrogateModel:
         }
         self.early_stopping_rounds = early_stopping_rounds
         self.validation_fraction = float(validation_fraction)
+
+        if self.f3_component_mode and self.with_uncertainty:
+            raise ValueError("with_uncertainty is not supported with f3_component_mode=True")
 
         XGBR = _get_xgb_regressor()
         self.mean_models = [XGBR(**params) for params in self.xgb_params_by_target]
@@ -270,13 +270,21 @@ class SurrogateModel:
             model.fit(X_train, y_train)
         return model
 
+    def _as_objective_targets(self, y):
+        y = np.atleast_2d(np.asarray(y, dtype=float))
+        if self.f3_component_mode and y.shape[1] == 4:
+            f3 = y[:, 2] / np.maximum(y[:, 3], 1.0e-9)
+            return np.column_stack([y[:, 0], y[:, 1], f3])
+        return y
+
     def fit(self, X, y, failure_mask=None):
         X = np.atleast_2d(np.asarray(X, dtype=float))
         y = np.atleast_2d(np.asarray(y, dtype=float))
         if X.shape[1] != N_DIM:
             raise ValueError(f"X must have {N_DIM} cols, got {X.shape[1]}")
-        if y.shape[1] != 3:
-            raise ValueError(f"y must have 3 cols (F1/F2/F3), got {y.shape[1]}")
+        expected_y_cols = 4 if self.f3_component_mode else 3
+        if y.shape[1] != expected_y_cols:
+            raise ValueError(f"y must have {expected_y_cols} cols ({self.target_labels}), got {y.shape[1]}")
         if len(X) != len(y):
             raise ValueError(f"len mismatch: X={len(X)} y={len(y)}")
 
@@ -328,7 +336,7 @@ class SurrogateModel:
                 shuffle=True,
             )
             reg_fit = (Xs_reg[reg_tr], y_reg[reg_tr], Xs_reg[reg_val], y_reg[reg_val])
-        for k in range(3):
+        for k in range(len(self.target_labels)):
             X_tr, y_tr, X_val, y_val = reg_fit
             self._fit_regressor(
                 self.mean_models[k],
@@ -337,13 +345,13 @@ class SurrogateModel:
                 X_val,
                 None if y_val is None else y_val[:, k],
             )
-            self.best_iterations_[f"F{k + 1}"] = getattr(
+            self.best_iterations_[self.target_labels[k]] = getattr(
                 self.mean_models[k],
                 "best_iteration",
                 None,
             )
         if self.with_uncertainty:
-            for k in range(3):
+            for k in range(len(self.target_labels)):
                 self.lo_models[k].fit(Xs_reg, y_reg[:, k])
                 self.hi_models[k].fit(Xs_reg, y_reg[:, k])
 
@@ -400,9 +408,16 @@ class SurrogateModel:
         if not self.fitted:
             raise RuntimeError("call fit() first")
         Xs = self._transform(X)
-        mean = np.column_stack([self.mean_models[k].predict(Xs) for k in range(3)])
+        raw = np.column_stack([self.mean_models[k].predict(Xs) for k in range(len(self.target_labels))])
+        if self.f3_component_mode:
+            f3 = raw[:, 2] / np.maximum(raw[:, 3], 1.0e-9)
+            mean = np.column_stack([raw[:, 0], raw[:, 1], f3])
+        else:
+            mean = raw
         if not return_std:
             return mean
+        if self.f3_component_mode:
+            raise RuntimeError("return_std is not supported with f3_component_mode=True")
         if not self.with_uncertainty:
             raise RuntimeError("surrogate not built with with_uncertainty=True")
         lo = np.column_stack([self.lo_models[k].predict(Xs) for k in range(3)])
@@ -424,6 +439,7 @@ class SurrogateModel:
 
     def score(self, X, y, per_objective: bool = True):
         pred = self.predict(X)
+        y = self._as_objective_targets(y)
         ss_res = ((pred - y) ** 2).sum(axis=0)
         ss_tot = ((y - y.mean(axis=0)) ** 2).sum(axis=0)
         ss_tot = np.where(ss_tot < 1e-12, 1.0, ss_tot)
@@ -432,6 +448,7 @@ class SurrogateModel:
 
     def metrics(self, X, y) -> dict:
         pred = self.predict(X)
+        y = self._as_objective_targets(y)
         err = pred - y
         rmse = np.sqrt((err ** 2).mean(axis=0))
         y_safe = np.where(np.abs(y) < 1e-12, 1.0, y)
@@ -492,6 +509,7 @@ class SurrogateModel:
                 xgb_classifier_params=self.xgb_classifier_params,
                 early_stopping_rounds=self.early_stopping_rounds,
                 validation_fraction=self.validation_fraction,
+                f3_component_mode=self.f3_component_mode,
             )
             tmp.fit(X[tr], y[tr], failure_mask=fail_mask[tr])
 

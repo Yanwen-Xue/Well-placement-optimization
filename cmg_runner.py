@@ -1,6 +1,3 @@
-\
-\
-\
 
 
 import os, subprocess, shutil, re, json, time, glob, warnings
@@ -65,8 +62,7 @@ _top_3d_cache = None
 _prop_cache = {}
 
 def _load_top_3d(NI=268, NJ=203, NK=200):
-    """加载 CMG 网格各层 TVDSS 顶面深度 [m]，返回 (NI, NJ, NK) array。
-    用于精确计算各 (i,j) 处任意 k 层的真实深度（地层 dip 已纳入）。"""
+    """Load TVDSS top depth for each CMG grid layer as an (NI, NJ, NK) array."""
     global _top_3d_cache
     if _top_3d_cache is not None:
         return _top_3d_cache
@@ -240,15 +236,6 @@ def _allocate_injection_rates(inj_wells, use_dynamic_inj_rates=None):
 
 
 def _per_well_max_bhp(wi, wj, top_3d):
-\
-\
-\
-\
-\
-\
-\
-\
-\
 
     import objectives as obj
     tvdss_perf_top = float(top_3d[wi, wj, INJ_K_TOP - 1])
@@ -259,11 +246,6 @@ def _per_well_max_bhp(wi, wj, top_3d):
 
 
 def _well_block(inj_wells, prod_wells, top_3d=None, use_dynamic_inj_rates=None):
-\
-\
-\
-\
-\
 
     if top_3d is None:
         top_3d = _load_top_3d()
@@ -324,12 +306,6 @@ def _well_block(inj_wells, prod_wells, top_3d=None, use_dynamic_inj_rates=None):
 
 def make_run_dat(run_id, inj_wells, prod_wells, sim_years=None,
                  gen_subdir=None, local_rid=None, use_dynamic_inj_rates=None):
-\
-\
-\
-\
-\
-\
 
     if sim_years is None:
         sim_years = SIM_YEARS_FINAL
@@ -434,15 +410,6 @@ def make_run_dat(run_id, inj_wells, prod_wells, sim_years=None,
 
 
 def run_sim(run_dir, dat_stem, timeout=172800):
-\
-\
-\
-\
-\
-\
-\
-\
-\
 
     dat_path = os.path.join(run_dir, dat_stem + ".dat")
     sr3_path = os.path.join(run_dir, dat_stem + ".sr3")
@@ -474,18 +441,6 @@ def run_sim(run_dir, dat_stem, timeout=172800):
 
 
 def parse_sr3(sr3_path):
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
 
     result = {
         "time_days": None,
@@ -504,9 +459,10 @@ def parse_sr3(sr3_path):
         "gascmlisc_co2":   None,
 
 
-        "mobile_krg_fraction": None,
-
-
+        "plume_area_sg0p1_km2": None,
+        "plume_n_columns_sg0p1": None,
+        "plume_status": "",
+        "plume_day": None,
         "pressure_heterogeneity_injend_std_mpa": None,
         "pressure_heterogeneity_injend_mean_mpa": None,
     }
@@ -584,49 +540,37 @@ def parse_sr3(sr3_path):
             groups = [name for name in f["SpatialProperties"].keys() if name.isdigit()]
             if groups:
                 gname = max(groups, key=lambda s: int(s))
-                root = f[f"SpatialProperties/{gname}"]
                 groups_sorted = sorted(groups, key=lambda s: int(s))
                 mtt_days = result["time_days"]
                 target_day = 30.0 * 365.25
                 group_ids = np.array([int(g) for g in groups_sorted], dtype=int)
                 group_days = mtt_days[group_ids].astype(float)
                 g_injend = groups_sorted[int(np.argmin(np.abs(group_days - target_day)))]
-                required = {"SG", "KRG", "MASDENG"}
-                if required.issubset(set(root.keys())):
+                injend_root = f[f"SpatialProperties/{g_injend}"]
+                result["plume_day"] = float(group_days[int(np.argmin(np.abs(group_days - target_day)))])
+
+                if "SG" in injend_root:
                     grid = f["SpatialProperties/000000/GRID"]
                     ipstcs = grid["IPSTCS"][()].astype(np.int64)
-                    pv = grid["BLOCKPVOL"][()].astype(np.float64)
                     nk = 200
                     full0 = ipstcs - 1
+                    i_idx = full0 // (203 * nk)
+                    j_idx = (full0 // nk) % 203
                     k = full0 % nk
                     inj_interval = (
                         (k >= INJ_K_BOT - 1)
                         & (k <= INJ_K_TOP - 1)
-                        & np.isfinite(pv)
-                        & (pv > 0.0)
                     )
                     idx = np.where(inj_interval)[0]
                     if idx.size > 0:
-                        sg = root["SG"][()][idx].astype(np.float64)
-                        krg = root["KRG"][()][idx].astype(np.float64)
-                        rhog = root["MASDENG"][()][idx].astype(np.float64)
-                        pvi = pv[idx]
-                        finite = (
-                            np.isfinite(sg)
-                            & np.isfinite(krg)
-                            & np.isfinite(rhog)
-                            & np.isfinite(pvi)
-                            & (pvi > 0.0)
-                        )
+                        sg = injend_root["SG"][()][idx].astype(np.float64)
+                        finite = np.isfinite(sg)
                         if np.any(finite):
-                            sg = np.clip(sg[finite], 0.0, None)
-                            krg = np.clip(krg[finite], 0.0, None)
-                            rhog = np.clip(rhog[finite], 0.0, None)
-                            pvi = pvi[finite]
-                            gas_mass = pvi * sg * rhog
-                            denom = float(np.sum(gas_mass))
-                            if denom > 0.0:
-                                result["mobile_krg_fraction"] = float(np.sum(gas_mass * krg) / denom)
+                            cols = np.column_stack([i_idx[idx][finite], j_idx[idx][finite]])
+                            plume_cols = np.unique(cols[sg[finite] >= 0.10], axis=0)
+                            result["plume_n_columns_sg0p1"] = int(len(plume_cols))
+                            result["plume_area_sg0p1_km2"] = float(len(plume_cols) * 0.0025)
+                            result["plume_status"] = "ok"
 
                 if "PRES" in f["SpatialProperties/000000"] and "PRES" in f[f"SpatialProperties/{g_injend}"]:
                     grid = f["SpatialProperties/000000/GRID"]
@@ -667,11 +611,6 @@ def expected_sim_days(sim_years):
 
 
 def reached_full_sim_duration(time_days, sim_years, tolerance_days=1.0):
-\
-\
-\
-\
-\
 
     if time_days is None:
         return False
@@ -685,21 +624,6 @@ def reached_full_sim_duration(time_days, sim_years, tolerance_days=1.0):
 def evaluate(run_id, inj_wells, prod_wells, grid_top_2d,
              sim_years=None, cleanup=False, gen_subdir=None, local_rid=None,
              grid_bot_2d=None, use_dynamic_inj_rates=None):
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
 
     if sim_years is None:
         sim_years = SIM_YEARS_FINAL
@@ -748,7 +672,10 @@ def evaluate(run_id, inj_wells, prod_wells, grid_top_2d,
                     "aqu_initial_mol": 0.0, "aqu_final_mol": 0.0,
                     "gas_final_mol": 0.0, "inj_cum_mol": 0.0,
                     "dissolved_net_mol": 0.0,
-                    "mobile_krg_fraction": np.nan,
+                    "plume_area_sg0p1_km2": np.nan,
+                    "plume_n_columns_sg0p1": -1,
+                    "plume_status": "simulation_failed",
+                    "plume_day": np.nan,
                     "pressure_heterogeneity_injend_std_mpa": np.nan,
                     "pressure_heterogeneity_injend_mean_mpa": np.nan,
                     "inj_bhp_max_per_well": np.array([])})
@@ -781,9 +708,20 @@ def evaluate(run_id, inj_wells, prod_wells, grid_top_2d,
     out["gas_final_mol"]     = float(gas[-1]) if (gas is not None and len(gas) > 0) else 0.0
     out["inj_cum_mol"]       = float(inj[-1]) if (inj is not None and len(inj) > 0) else 0.0
     out["dissolved_net_mol"] = out["aqu_final_mol"] - out["aqu_initial_mol"]
-    out["mobile_krg_fraction"] = (
-        float(sr3["mobile_krg_fraction"])
-        if sr3.get("mobile_krg_fraction") is not None
+    out["plume_area_sg0p1_km2"] = (
+        float(sr3["plume_area_sg0p1_km2"])
+        if sr3.get("plume_area_sg0p1_km2") is not None
+        else np.nan
+    )
+    out["plume_n_columns_sg0p1"] = (
+        int(sr3["plume_n_columns_sg0p1"])
+        if sr3.get("plume_n_columns_sg0p1") is not None
+        else -1
+    )
+    out["plume_status"] = str(sr3.get("plume_status") or "")
+    out["plume_day"] = (
+        float(sr3["plume_day"])
+        if sr3.get("plume_day") is not None
         else np.nan
     )
     out["pressure_heterogeneity_injend_std_mpa"] = (

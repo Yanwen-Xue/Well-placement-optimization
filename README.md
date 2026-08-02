@@ -10,37 +10,37 @@ The workflow includes:
 - extraction of objective values from full-physics CMG simulation outputs;
 - XGBoost surrogate-model training;
 - surrogate-assisted NSGA-III multi-objective optimization;
-- validation and ablation utilities for the prescreen-derived surrogate inputs.
+- validation and ablation utilities for prescreen-derived surrogate inputs.
 
 ## Objective Functions
 
-The final optimization problem uses three minimization objectives:
+The optimization problem uses three minimization objectives:
 
-- `F1`: maximum relative increase in average pressure;
-- `F2`: negative mobility-weighted gas-phase CO2 index;
-- `F3`: PV-weighted spatial standard deviation of pressure buildup in the CO2 injection interval at the end of injection.
+- `F1`: peak relative increase in average reservoir pressure;
+- `F2`: horizontal projected CO2 plume-footprint area, calculated from grid columns where the maximum gas saturation in the CO2 injection interval is at least 0.10;
+- `F3`: normalized pressure-buildup heterogeneity, calculated as the pore-volume-weighted standard deviation of pressure buildup divided by the pore-volume-weighted mean pressure buildup in the CO2 injection interval.
 
 Injection wells are constrained by a location-specific bottom-hole-pressure limit based on
-the fracture-pressure safety criterion.
+90% of the Eaton fracture-pressure estimate.
 
 ## Repository Structure
 
 ```text
 .
-├── cmg_runner.py
-├── injectivity_prescreening_map.py
-├── lhs_sampler.py
-├── objectives.py
-├── optimizer.py
-├── surrogate.py
-└── validation_tools/
-    ├── append_lhs_samples_and_export.py
-    ├── build_lhs_results_from_export.py
-    ├── export_lhs_group.py
-    ├── export_pareto_validation_groups.py
-    ├── run_lhs_doe.py
-    ├── train_surrogate.py
-    └── validate_prescreen_utility.py
+|-- cmg_runner.py
+|-- injectivity_prescreening_map.py
+|-- lhs_sampler.py
+|-- objectives.py
+|-- optimizer.py
+|-- surrogate.py
+`-- validation_tools/
+    |-- append_lhs_samples_and_export.py
+    |-- build_lhs_results_from_export.py
+    |-- export_lhs_group.py
+    |-- export_pareto_validation_groups.py
+    |-- run_lhs_doe.py
+    |-- train_surrogate.py
+    `-- validate_prescreen_utility.py
 ```
 
 ## Required External Files
@@ -85,19 +85,19 @@ python validation_tools/export_lhs_group.py --group-name lhs_cases --start 0 --s
 4. Build the training dataset from returned CMG outputs:
 
 ```powershell
-python validation_tools/build_lhs_results_from_export.py --out opt_runs_lhs_doe/results_0_543.npz
+python validation_tools/build_lhs_results_from_export.py --out opt_runs_lhs_doe/results_current.npz
 ```
 
 5. Train the XGBoost surrogate:
 
 ```powershell
-python validation_tools/train_surrogate.py --results opt_runs_lhs_doe/results_0_543.npz --model opt_runs_lhs_doe/surrogate_model_0_543.joblib --report opt_runs_lhs_doe/surrogate_metrics_0_543.json
+python validation_tools/train_surrogate.py --results opt_runs_lhs_doe/results_current.npz --model-out opt_runs_lhs_doe/surrogate_model.joblib --report-out opt_runs_lhs_doe/surrogate_metrics.json --f3-component-mode
 ```
 
 6. Run NSGA-III with the trained surrogate:
 
 ```powershell
-python optimizer.py --surrogate opt_runs_lhs_doe/surrogate_model_0_543.joblib
+python optimizer.py --surrogate opt_runs_lhs_doe/surrogate_model.joblib
 ```
 
 ## Data Availability
