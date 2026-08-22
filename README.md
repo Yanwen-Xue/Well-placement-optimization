@@ -106,3 +106,12 @@ The geological model, reservoir-model input files, petrophysical property grids,
 full-physics simulation outputs used in this study are derived from the Shenhua Ordos CO2
 geological storage demonstration project and are subject to confidentiality restrictions.
 Therefore, these data are not publicly available.
+
+## Public paper-case tables
+
+Paper-facing derived tables for the eight selected layouts are provided in
+`public_data/paper_cases_1_8/`. They include the case mapping, well coordinates,
+0--80 year response summaries, paired differences, Pareto-screening records, and
+matched-layout controls. The original CMG `.sr3` result files are documented in
+`sr3_manifest.csv` but are not included because each file is approximately 9--10 GB.
+SIP files, geological model files, property grids, and CMG input files remain excluded.

@@ -8,6 +8,9 @@ opt_runs_lhs_doe/
 opt_runs_lhs_doe_export/
 opt_runs_pareto_validation_export/
 
+# Local full-physics comparison runs; source files may contain confidential paths.
+compare/
+
 *.sr3
 *.dat
 *.out
@@ -26,4 +29,3 @@ run_log.txt
 optimizer.log
 manifest.json
 run_state.json
-
