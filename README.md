@@ -115,3 +115,11 @@ Paper-facing derived tables for the eight selected layouts are provided in
 matched-layout controls. The original CMG `.sr3` result files are documented in
 `sr3_manifest.csv` but are not included because each file is approximately 9--10 GB.
 SIP files, geological model files, property grids, and CMG input files remain excluded.
+
+The complete derived response tables are provided in `public_data/`. The file
+`Supplementary_Data_679_Layouts_Three_Responses.csv` contains the five injector and five
+producer well locations as zero-based model-grid I/J indices, the three response metrics for
+all 679 completed layouts, and the pressure-peak time. The file
+`Supplementary_Data_Pareto_240_Layouts_Three_Responses.csv` contains the same well-location
+fields and the three surrogate-predicted responses for the 240 non-dominated layouts. These
+tables contain no geological model, CMG input, SIP file, or SR3 output.
