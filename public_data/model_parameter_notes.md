@@ -12,7 +12,7 @@ Henry-law CO2 dissolution option, 0.34 molal salinity, and rock compressibility
 of 6.0e-7 kPa^-1 at a 20 MPa reference pressure. Tabulated capillary pressure is zero.
 
 `gem_drainage_relative_permeability.csv` transcribes the drainage water and gas
-relative-permeability saturation tables from the final 268 x 203 x 200 GEM input.
+relative-permeability saturation tables from the GEM model input used in this study.
 The two relative-permeability columns use separate water and gas saturation axes,
 which share the same tabulated values in this input. Both capillary-pressure columns
 are zero at all tabulated saturations. The file contains no spatial reservoir data.
