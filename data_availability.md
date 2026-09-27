@@ -22,3 +22,7 @@ are derived layout and response tables only and contain no restricted model file
 The eight selected CMG SR3 files are listed in `public_data/paper_cases_1_8/sr3_manifest.csv`
 but are not included in the GitHub repository because each file is approximately
 9--10 GB. SIP files and CMG input files are also excluded.
+
+Non-spatial interval statistics already reported in the manuscript and selected
+flow-model settings are provided in `public_data/model_interval_summary.csv` and
+`public_data/model_parameter_notes.md`. They do not disclose grid-cell properties.

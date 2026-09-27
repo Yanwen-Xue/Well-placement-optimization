@@ -1,0 +1,6 @@
+interval,permeability_mean_mD,permeability_min_mD,permeability_max_mD,porosity_mean,porosity_min,porosity_max,initial_pressure_mean_MPa,initial_temperature_mean_C,co2_viscosity_mean_mPa_s
+Caprock,2.94,0,7.08,0.029,0,0.045,12.49,12.86,0.099
+Buffer Interval I,3.74,0,10.00,0.031,0,0.063,16.37,25.89,0.089
+CO2 Reservoir,4.78,0,9.12,0.037,0,0.070,19.07,34.99,0.083
+Buffer Interval II,4.06,0,9.55,0.040,0,0.085,20.76,40.67,0.080
+Brine Production Interval,4.49,0,9.55,0.044,0,0.085,22.19,45.51,0.078

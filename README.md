@@ -123,3 +123,8 @@ all 679 completed layouts, and the pressure-peak time. The file
 `Supplementary_Data_Pareto_240_Layouts_Three_Responses.csv` contains the same well-location
 fields and the three surrogate-predicted responses for the 240 non-dominated layouts. These
 tables contain no geological model, CMG input, SIP file, or SR3 output.
+
+The non-spatial interval statistics reported in manuscript Table 1 and a concise
+description of flow-model settings are in `public_data/model_interval_summary.csv`
+and `public_data/model_parameter_notes.md`. These files do not include spatial
+property grids or site measurements.
