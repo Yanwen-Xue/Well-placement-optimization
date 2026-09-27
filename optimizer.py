@@ -11,6 +11,7 @@ from cmg_runner import (evaluate, OPT_RUNS_DIR, SIM_YEARS_FINAL)
 from objectives import (compute_objectives, normalise_objectives,
                         check_spacing, check_boundary, PENALTY_VALUE)
 
+os.makedirs(OPT_RUNS_DIR, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",

@@ -18,6 +18,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import surrogate
+import feature_333
 
 
 DEFAULT_RESULTS = ROOT / "opt_runs_lhs_doe" / "results.npz"
@@ -161,6 +162,43 @@ def build_feature_extractor(seeds_path: Path, feature_mode: str):
             "seeds_path": None,
             "feature_names": [],
         }
+    if feature_mode == "prescreen_geometry_local_static_well_triview":
+        with np.load(seeds_path, allow_pickle=False) as seeds:
+            required = ("J_inj_2d", "J_prod_2d", "bound_mask")
+            missing = [key for key in required if key not in seeds.files]
+            if missing:
+                raise KeyError(f"missing plan-view arrays in {seeds_path}: {missing}")
+            static_path = seeds_path.parent / "prescreen_maps" / "static_sideview_fields_no_pressure_threshold.npz"
+            with np.load(static_path, allow_pickle=False) as static:
+                static_required = ("static_inj_3d", "static_prod_3d", "pressure_initial_3d")
+                missing = [key for key in static_required if key not in static.files]
+                if missing:
+                    raise KeyError(f"missing side-view arrays in {static_path}: {missing}")
+                base = surrogate.make_prescreen_extractor(
+                    seeds["J_inj_2d"], seeds["J_prod_2d"], seeds["bound_mask"],
+                    grid_top_2d=seeds["grid_top_2d"] if "grid_top_2d" in seeds.files else None,
+                    grid_bot_2d=seeds["grid_bot_2d"] if "grid_bot_2d" in seeds.files else None,
+                    include_geometry=True, include_local=True,
+                )
+                sideview = feature_333.StaticWellConditionedTriViewFeatureExtractor(
+                    static["static_inj_3d"], static["static_prod_3d"], static["pressure_initial_3d"],
+                    inj_k_range=(int(static["INJ_K_START"]), int(static["INJ_K_END"])),
+                    prod_k_range=(int(static["PRD_K_START"]), int(static["PRD_K_END"])),
+                    bridge_k_range=(int(static["PRD_K_END"]) + 1, int(static["INJ_K_START"]) - 1),
+                )
+            layout = feature_333.LayoutSetFeatureExtractor(
+                ni=seeds["bound_mask"].shape[0], nj=seeds["bound_mask"].shape[1],
+                dx=float(seeds["dx"]) if "dx" in seeds.files else 50.0,
+            )
+        extractor = feature_333.CombinedFeatureExtractor((base, sideview, layout))
+        feature_names = list(extractor.feature_names)
+        if len(feature_names) != 313:
+            raise ValueError(f"expected 313 derived features, got {len(feature_names)}")
+        return extractor, {
+            "enabled": True, "mode": feature_mode, "seeds_path": str(seeds_path),
+            "static_sideview_path": str(static_path), "feature_names": feature_names,
+            "n_prescreen_features": len(feature_names),
+        }
     seeds = np.load(seeds_path, allow_pickle=False)
     required = ["J_inj_2d", "J_prod_2d", "bound_mask"]
     missing = [k for k in required if k not in seeds.files]
@@ -238,7 +276,8 @@ def main() -> int:
     )
     parser.add_argument(
         "--feature-mode",
-        choices=["coords", "prescreen", "prescreen_geometry", "prescreen_geometry_local"],
+        choices=["coords", "prescreen", "prescreen_geometry", "prescreen_geometry_local",
+                 "prescreen_geometry_local_static_well_triview"],
         default="prescreen",
         help="surrogate input feature set; --no-prescreen-features is an alias for coords",
     )

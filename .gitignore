@@ -21,6 +21,7 @@ compare/
 *.h5
 *.hdf5
 *.npz
+!public_data/training_responses_684.npz
 *.joblib
 *.pkl
 *.npy
