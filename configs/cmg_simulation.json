@@ -1,0 +1,33 @@
+{
+  "simulator": "CMG GEM 2024.20",
+  "grid": [268, 203, 200],
+  "cell_size_m": 50.0,
+  "total_simulation_years": 80,
+  "injection_years": 30,
+  "injection": {
+    "well_count": 5,
+    "completion_layers": [41, 80],
+    "surface_rate_Nm3_day_per_well": 288392.0,
+    "control": "MAX STG, CONT REPEAT",
+    "BHP_control": "MAX BHP at 0.90*Eaton fracture pressure*0.99"
+  },
+  "production": {
+    "well_count": 5,
+    "completion_layers": [1, 15],
+    "water_rate_control_STW": "MAX 1200 STW, CONT REPEAT",
+    "minimum_BHP_kPa": 8000.0
+  },
+  "well_geometry": {
+    "radius_m": 0.0762,
+    "geometric_factor": 0.37,
+    "well_fraction": 1.0,
+    "skin": 0.0
+  },
+  "numerics": {
+    "DTMAX_days": 180.0,
+    "CHECKRB": true,
+    "SDEGREE": 2,
+    "CMG_PARASOL": 10
+  },
+  "schedule": "Injectors and producers are operated through year 30; all wells are shut in after injection, followed by five-year monitoring dates through year 80."
+}

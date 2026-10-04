@@ -1,3 +1,12 @@
+\
+\
+\
+\
+\
+\
+\
+\
+\
 
 
 from __future__ import annotations
@@ -42,16 +51,6 @@ def load_dataset(results_path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray
         "sim_years": np.asarray(data["sim_years"], dtype=int) if "sim_years" in data.files else None,
         "failure_reason": np.asarray(data["failure_reason"]) if "failure_reason" in data.files else None,
         "success_mask": np.asarray(data["success_mask"], dtype=bool),
-        "pressure_heterogeneity_injend_std_mpa": (
-            np.asarray(data["pressure_heterogeneity_injend_std_mpa"], dtype=float)
-            if "pressure_heterogeneity_injend_std_mpa" in data.files
-            else None
-        ),
-        "pressure_heterogeneity_injend_mean_mpa": (
-            np.asarray(data["pressure_heterogeneity_injend_mean_mpa"], dtype=float)
-            if "pressure_heterogeneity_injend_mean_mpa" in data.files
-            else None
-        ),
     }
     return X, y, failure_mask, info
 
@@ -161,6 +160,174 @@ def build_feature_extractor(seeds_path: Path, feature_mode: str):
             "seeds_path": None,
             "feature_names": [],
         }
+    if feature_mode == "prescreen_geometry_local_triview":
+        seeds = np.load(seeds_path, allow_pickle=False)
+        required = ["J_inj_2d", "J_prod_2d", "bound_mask", "J_conn_xy", "J_conn_xz", "J_conn_yz"]
+        missing = [k for k in required if k not in seeds.files]
+        if missing:
+            raise KeyError(f"missing tri-view prescreen arrays in {seeds_path}: {missing}")
+        base = surrogate.make_prescreen_extractor(
+            seeds["J_inj_2d"],
+            seeds["J_prod_2d"],
+            seeds["bound_mask"],
+            grid_top_2d=seeds["grid_top_2d"] if "grid_top_2d" in seeds.files else None,
+            grid_bot_2d=seeds["grid_bot_2d"] if "grid_bot_2d" in seeds.files else None,
+            include_geometry=True,
+            include_local=True,
+        )
+        triview = surrogate.make_triview_extractor(
+            seeds["J_conn_xy"],
+            seeds["J_conn_xz"],
+            seeds["J_conn_yz"],
+            inj_k_range=(
+                int(seeds["INJ_K_START"]) if "INJ_K_START" in seeds.files else 41,
+                int(seeds["INJ_K_END"]) if "INJ_K_END" in seeds.files else 80,
+            ),
+            prod_k_range=(
+                int(seeds["PRD_K_START"]) if "PRD_K_START" in seeds.files else 1,
+                int(seeds["PRD_K_END"]) if "PRD_K_END" in seeds.files else 15,
+            ),
+            bridge_k_range=(
+                int(seeds["PRD_K_END"]) + 1 if "PRD_K_END" in seeds.files else 16,
+                int(seeds["INJ_K_START"]) - 1 if "INJ_K_START" in seeds.files else 40,
+            ),
+        )
+        layout = surrogate.LayoutSetFeatureExtractor(
+            ni=int(seeds["NI"]) if "NI" in seeds.files else seeds["bound_mask"].shape[0],
+            nj=int(seeds["NJ"]) if "NJ" in seeds.files else seeds["bound_mask"].shape[1],
+            dx=float(seeds["dx"]) if "dx" in seeds.files else 50.0,
+        )
+        extractor = surrogate.CombinedFeatureExtractor([base, triview, layout])
+        feature_names = list(getattr(extractor, "feature_names", []))
+        return extractor, {
+            "enabled": True,
+            "mode": feature_mode,
+            "seeds_path": str(seeds_path),
+            "feature_names": feature_names,
+            "n_prescreen_features": int(len(feature_names)),
+            "triview_enabled": True,
+            "layout_set_enabled": True,
+        }
+    if feature_mode == "prescreen_geometry_local_well_triview":
+        seeds = np.load(seeds_path, allow_pickle=False)
+        required = [
+            "J_inj_2d",
+            "J_prod_2d",
+            "bound_mask",
+            "J_inj_3d",
+            "J_prod_3d",
+        ]
+        missing = [k for k in required if k not in seeds.files]
+        if missing:
+            raise KeyError(f"missing well-conditioned tri-view arrays in {seeds_path}: {missing}")
+        base = surrogate.make_prescreen_extractor(
+            seeds["J_inj_2d"],
+            seeds["J_prod_2d"],
+            seeds["bound_mask"],
+            grid_top_2d=seeds["grid_top_2d"] if "grid_top_2d" in seeds.files else None,
+            grid_bot_2d=seeds["grid_bot_2d"] if "grid_bot_2d" in seeds.files else None,
+            include_geometry=True,
+            include_local=True,
+        )
+        well_triview = surrogate.WellConditionedTriViewFeatureExtractor(
+            seeds["J_inj_3d"],
+            seeds["J_prod_3d"],
+            bound_mask=seeds["bound_mask"],
+            J_global_max_inj=seeds["J_global_max_inj"] if "J_global_max_inj" in seeds.files else None,
+            J_global_max_prod=seeds["J_global_max_prod"] if "J_global_max_prod" in seeds.files else None,
+            inj_k_range=(
+                int(seeds["INJ_K_START"]) if "INJ_K_START" in seeds.files else 41,
+                int(seeds["INJ_K_END"]) if "INJ_K_END" in seeds.files else 80,
+            ),
+            prod_k_range=(
+                int(seeds["PRD_K_START"]) if "PRD_K_START" in seeds.files else 1,
+                int(seeds["PRD_K_END"]) if "PRD_K_END" in seeds.files else 15,
+            ),
+            bridge_k_range=(
+                int(seeds["PRD_K_END"]) + 1 if "PRD_K_END" in seeds.files else 16,
+                int(seeds["INJ_K_START"]) - 1 if "INJ_K_START" in seeds.files else 40,
+            ),
+        )
+        layout = surrogate.LayoutSetFeatureExtractor(
+            ni=int(seeds["NI"]) if "NI" in seeds.files else seeds["bound_mask"].shape[0],
+            nj=int(seeds["NJ"]) if "NJ" in seeds.files else seeds["bound_mask"].shape[1],
+            dx=float(seeds["dx"]) if "dx" in seeds.files else 50.0,
+        )
+        extractor = surrogate.CombinedFeatureExtractor([base, well_triview, layout])
+        feature_names = list(getattr(extractor, "feature_names", []))
+        return extractor, {
+            "enabled": True,
+            "mode": feature_mode,
+            "seeds_path": str(seeds_path),
+            "feature_names": feature_names,
+            "n_prescreen_features": int(len(feature_names)),
+            "well_conditioned_triview_enabled": True,
+            "layout_set_enabled": True,
+        }
+    if feature_mode == "prescreen_geometry_local_static_well_triview":
+        seeds = np.load(seeds_path, allow_pickle=False)
+        static_path = seeds_path.parent / "prescreen_maps" / "static_sideview_fields_no_pressure_threshold.npz"
+        required = [
+            "J_inj_2d",
+            "J_prod_2d",
+            "bound_mask",
+        ]
+        missing = [k for k in required if k not in seeds.files]
+        if missing:
+            raise KeyError(f"missing official XY prescreen arrays in {seeds_path}: {missing}")
+        if not static_path.exists():
+            raise FileNotFoundError(
+                f"static side-view fields not found: {static_path}. "
+                "Run validation_tools/build_static_sideview_fields.py first."
+            )
+        static = np.load(static_path, allow_pickle=False)
+        static_required = ["static_inj_3d", "static_prod_3d", "pressure_initial_3d"]
+        static_missing = [k for k in static_required if k not in static.files]
+        if static_missing:
+            raise KeyError(f"missing static side-view arrays in {static_path}: {static_missing}")
+        base = surrogate.make_prescreen_extractor(
+            seeds["J_inj_2d"],
+            seeds["J_prod_2d"],
+            seeds["bound_mask"],
+            grid_top_2d=seeds["grid_top_2d"] if "grid_top_2d" in seeds.files else None,
+            grid_bot_2d=seeds["grid_bot_2d"] if "grid_bot_2d" in seeds.files else None,
+            include_geometry=True,
+            include_local=True,
+        )
+        static_triview = surrogate.StaticWellConditionedTriViewFeatureExtractor(
+            static["static_inj_3d"],
+            static["static_prod_3d"],
+            static["pressure_initial_3d"],
+            inj_k_range=(
+                int(static["INJ_K_START"]) if "INJ_K_START" in static.files else 41,
+                int(static["INJ_K_END"]) if "INJ_K_END" in static.files else 80,
+            ),
+            prod_k_range=(
+                int(static["PRD_K_START"]) if "PRD_K_START" in static.files else 1,
+                int(static["PRD_K_END"]) if "PRD_K_END" in static.files else 15,
+            ),
+            bridge_k_range=(
+                int(static["PRD_K_END"]) + 1 if "PRD_K_END" in static.files else 16,
+                int(static["INJ_K_START"]) - 1 if "INJ_K_START" in static.files else 40,
+            ),
+        )
+        layout = surrogate.LayoutSetFeatureExtractor(
+            ni=int(seeds["NI"]) if "NI" in seeds.files else seeds["bound_mask"].shape[0],
+            nj=int(seeds["NJ"]) if "NJ" in seeds.files else seeds["bound_mask"].shape[1],
+            dx=float(seeds["dx"]) if "dx" in seeds.files else 50.0,
+        )
+        extractor = surrogate.CombinedFeatureExtractor([base, static_triview, layout])
+        feature_names = list(getattr(extractor, "feature_names", []))
+        return extractor, {
+            "enabled": True,
+            "mode": feature_mode,
+            "seeds_path": str(seeds_path),
+            "static_sideview_path": str(static_path),
+            "feature_names": feature_names,
+            "n_prescreen_features": int(len(feature_names)),
+            "static_sideview_without_pressure_threshold": True,
+            "layout_set_enabled": True,
+        }
     seeds = np.load(seeds_path, allow_pickle=False)
     required = ["J_inj_2d", "J_prod_2d", "bound_mask"]
     missing = [k for k in required if k not in seeds.files]
@@ -232,13 +399,16 @@ def main() -> int:
     parser.add_argument("--seeds", default=str(DEFAULT_SEEDS), help="path to opt_seeds*.npz containing prescreen maps")
     parser.add_argument("--no-prescreen-features", action="store_true", help="disable prescreen-map feature augmentation")
     parser.add_argument(
-        "--f3-component-mode",
-        action="store_true",
-        help="train pressure std and mean components and reconstruct F3 as std/mean",
-    )
-    parser.add_argument(
         "--feature-mode",
-        choices=["coords", "prescreen", "prescreen_geometry", "prescreen_geometry_local"],
+        choices=[
+            "coords",
+            "prescreen",
+            "prescreen_geometry",
+            "prescreen_geometry_local",
+            "prescreen_geometry_local_triview",
+            "prescreen_geometry_local_well_triview",
+            "prescreen_geometry_local_static_well_triview",
+        ],
         default="prescreen",
         help="surrogate input feature set; --no-prescreen-features is an alias for coords",
     )
@@ -252,15 +422,6 @@ def main() -> int:
     report_out.parent.mkdir(parents=True, exist_ok=True)
 
     X, y, failure_mask, info = load_dataset(results_path)
-    if args.f3_component_mode:
-        pressure_std = info["pressure_heterogeneity_injend_std_mpa"]
-        pressure_mean = info["pressure_heterogeneity_injend_mean_mpa"]
-        if pressure_std is None or pressure_mean is None:
-            raise KeyError(
-                "f3-component-mode requires pressure_heterogeneity_injend_std_mpa "
-                "and pressure_heterogeneity_injend_mean_mpa in the results NPZ"
-            )
-        y = np.column_stack([y[:, 0], y[:, 1], pressure_std, pressure_mean])
     dataset_summary = summarize_dataset(info, failure_mask)
     if dataset_summary["n_success"] < 5:
         raise ValueError("too few successful samples for surrogate regression")
@@ -331,7 +492,6 @@ def main() -> int:
         xgb_classifier_params=xgb_classifier_params,
         early_stopping_rounds=early_stopping_rounds,
         validation_fraction=float(args.validation_fraction),
-        f3_component_mode=bool(args.f3_component_mode),
     )
     cv = model.cross_validate(
         X[train_idx],
@@ -389,7 +549,6 @@ def main() -> int:
         "model_path": str(model_out),
         "with_uncertainty": bool(args.with_uncertainty),
         "with_failure_classifier": not bool(args.no_failure_classifier),
-        "f3_component_mode": bool(args.f3_component_mode),
         "prescreen_features": feature_report,
         "ref_mode": args.ref_mode,
         "xgb_params": xgb_params,

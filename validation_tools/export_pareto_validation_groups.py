@@ -1,25 +1,21 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import shutil
 from pathlib import Path
 
 
-ROOT = Path(os.environ.get("PROJECT_ROOT", str(Path(__file__).resolve().parents[1])))
-CMG_MODEL_NAME = os.environ.get("CMG_MODEL_NAME", "model")
-CMG_EXE = os.environ.get("CMG_EXE", "gm202420.exe")
-SIP_NAME = os.environ.get("CMG_SIP_NAME", f"{CMG_MODEL_NAME}.sip")
-SRC_ROOT = Path(os.environ.get("PARETO_VALIDATION_SOURCE", str(ROOT / "opt_runs" / "pareto_validation_current")))
-OUT_ROOT = Path(os.environ.get("PARETO_VALIDATION_EXPORT", str(ROOT / "opt_runs_pareto_validation_export")))
-SIP_SRC = Path(os.environ.get("CMG_SIP_FILE", str(ROOT / "cmg" / SIP_NAME)))
+ROOT = Path(r"F:\CODE1")
+SRC_ROOT = ROOT / "opt_runs" / "pareto_validation_16_current"
+OUT_ROOT = ROOT / "opt_runs_pareto_validation_export"
+SIP_SRC = ROOT / "cmg" / "2026_0421.sip"
 
 GROUPS = [
-    ("machine_1_pareto_validation_0001_0010", list(range(1, 11)), CMG_EXE, 5),
-    ("machine_4_pareto_validation_0011_0013", list(range(11, 14)), CMG_EXE, 3),
-    ("machine_2_pareto_validation_0014_0015", list(range(14, 16)), CMG_EXE, 2),
-    ("machine_5_pareto_validation_0016_0016", [16], CMG_EXE, 1),
+    ("machine_1_pareto_validation_0001_0010", list(range(1, 11)), r"D:\CMG2024\GEM\2024.20\Win_x64\EXE\gm202420.exe", 5),
+    ("machine_4_pareto_validation_0011_0013", list(range(11, 14)), r"D:\CMG2024\GEM\2024.20\Win_x64\EXE\gm202420.exe", 3),
+    ("machine_2_pareto_validation_0014_0015", list(range(14, 16)), r"D:\CMG2024\GEM\2024.20\Win_x64\EXE\gm202420.exe", 2),
+    ("machine_5_pareto_validation_0016_0016", [16], r"E:\projects\CMG2024\GEM\2024.20\Win_x64\EXE\gm202420.exe", 1),
 ]
 
 
@@ -61,7 +57,7 @@ function Write-Log {
 
 function Update-DatSipPath {
     param([string]$DatPath)
-    $SipPath = Join-Path $Root "cmg\__SIP_NAME__"
+    $SipPath = Join-Path $Root "cmg\2026_0421.sip"
     if (-not (Test-Path $SipPath)) {
         throw "SIP file not found: $SipPath"
     }
@@ -213,7 +209,7 @@ def patch_dat_sip(dat_path: Path) -> None:
     text = dat_path.read_text(encoding="utf-8", errors="replace")
     text = re.sub(
         r"FILENAMES\s+SIPDATA-IN\s+'[^']*'",
-        "FILENAMES SIPDATA-IN 'cmg/__SIP_NAME__'",
+        "FILENAMES SIPDATA-IN 'cmg/2026_0421.sip'",
         text,
     )
     dat_path.write_text(text, encoding="utf-8")
@@ -235,7 +231,7 @@ def main() -> None:
             shutil.rmtree(group_dir)
         (group_dir / "lhs_doe").mkdir(parents=True)
         (group_dir / "cmg").mkdir(parents=True)
-        shutil.copy2(SIP_SRC, group_dir / "cmg" / SIP_NAME)
+        shutil.copy2(SIP_SRC, group_dir / "cmg" / "2026_0421.sip")
 
         cases = []
         for case_id in case_ids:
@@ -259,8 +255,8 @@ def main() -> None:
                     "relative_dat_path": rel_dat,
                     "source_rank": meta["source_rank"],
                     "pred_pressure_rise_pct": meta["pred_pressure_rise_pct"],
-                    "pred_F2_plume_area_sg0p1_km2": meta.get("pred_F2_plume_area_sg0p1_km2"),
-                    "pred_F3_pressure_heterogeneity_cv": meta.get("pred_F3_pressure_heterogeneity_cv"),
+                    "pred_dissolution_pct": meta["pred_dissolution_pct"],
+                    "pred_brine_m3": meta["pred_brine_m3"],
                     "inj_wells": meta["inj_wells"],
                     "prod_wells": meta["prod_wells"],
                 }
@@ -275,11 +271,8 @@ def main() -> None:
             json.dumps(manifest, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
-        ps1 = (
-            RUN_GROUP_PS1
-            .replace("__CMG_EXE__", cmg_exe)
-            .replace("__MAX_PARALLEL__", str(max_parallel))
-            .replace("__SIP_NAME__", SIP_NAME)
+        ps1 = RUN_GROUP_PS1.replace("__CMG_EXE__", cmg_exe).replace(
+            "__MAX_PARALLEL__", str(max_parallel)
         )
         (group_dir / "run_group.ps1").write_text(ps1, encoding="utf-8")
         summary.append(

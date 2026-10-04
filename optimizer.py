@@ -1,3 +1,15 @@
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
 
 
 import os, json, time, logging
@@ -10,6 +22,9 @@ from itertools import combinations_with_replacement
 from cmg_runner import (evaluate, OPT_RUNS_DIR, SIM_YEARS_FINAL)
 from objectives import (compute_objectives, normalise_objectives,
                         check_spacing, check_boundary, PENALTY_VALUE)
+
+# Make a clean checkout runnable before configuring the file logger.
+os.makedirs(OPT_RUNS_DIR, exist_ok=True)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -45,7 +60,7 @@ USE_OPT_PERM_ALIGN = True
 USE_EARLY_STOP = True
 
 
-CKPT_INTERVAL = 5
+CKPT_INTERVAL = int(os.environ.get("CKPT_INTERVAL", "5"))
 NSGA3_FINAL_K = 16
 
 
@@ -69,12 +84,12 @@ BOUND_MARGIN = 20
 SURROGATE_DEFAULT = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "opt_runs_lhs_doe",
-    "surrogate_model_0_543.joblib",
+    "component_f3_model_0_623_official_log_20260813.joblib",
 )
 
 
 def _eval_worker(args):
-    """Worker for parallel evaluation; top-level so ProcessPoolExecutor can pickle it."""
+    """Worker for parallel evaluation 鈥?top-level so ProcessPoolExecutor can pickle it."""
     rid, inj, prod, grid_top, grid_bot, sim_years, cleanup, bound_mask, dx, gen_subdir, local_rid = args
     result = evaluate(rid, inj, prod, grid_top,
                       sim_years=sim_years, cleanup=cleanup,
@@ -90,6 +105,14 @@ def _eval_worker(args):
 
 
 def _generate_reference_points(M, p):
+\
+\
+\
+\
+\
+\
+\
+\
 
     def _enum(remaining, n_vars):
         if n_vars == 1:
@@ -201,6 +224,14 @@ class HybridNSGAIII:
 
 
     def _align_to_target(self, target_x, source_x):
+\
+\
+\
+\
+\
+\
+\
+\
 
         s = np.asarray(source_x, dtype=float).copy()
         if not self.use_opt_perm_align:
@@ -351,7 +382,7 @@ class HybridNSGAIII:
             obj = self._surrogate_predict_pop(np.asarray([x], dtype=float))[0]
             disp_id = f"{gen_subdir}/run_{local_rid:03d}" if gen_subdir else "surrogate"
             log.info(
-                "[%s] %s  F1=%.4f F2_plume_area=%.4f km2 F3_pressure_cv=%.6f  backend=surrogate",
+                "[%s] %s  F1=%.4f F2_plume_km2=%.4f F3_pressure_cv=%.6f  backend=surrogate",
                 tag,
                 disp_id,
                 obj[0],
@@ -375,7 +406,7 @@ class HybridNSGAIII:
             D_INJ_INJ_M, D_PROD_PROD_M, D_INJ_PROD_M,
         )
         disp_id = f"{gen_subdir}/run_{local_rid:03d}" if gen_subdir else f"run_{rid:05d}"
-        log.info("[%s] %s  F1=%.4f F2_plume_area=%.4f km2 F3_pressure_cv=%.6f ok=%s  t=%.0fs",
+        log.info("[%s] %s  F1=%.4f F2_plume_km2=%.4f F3_pressure_cv=%.6f ok=%s  t=%.0fs",
                  tag, disp_id, F1, F2, F3, feas, result["elapsed_s"])
         return np.array([F1, F2, F3])
 
@@ -410,7 +441,7 @@ class HybridNSGAIII:
                     try:
                         objs[i] = fut.result()
                     except Exception as e:
-                        log.warning("Parallel evaluation worker %d failed: %s", i, e)
+                        log.warning("骞惰璇勪及Worker %d 寮傚父: %s", i, e)
         return objs
 
 
@@ -450,6 +481,16 @@ class HybridNSGAIII:
 
 
     def _nsga3_select(self, combined_pop, combined_objs, n_keep):
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
 
         fronts   = self._nondominated_sort(combined_objs)
         selected = []
@@ -730,7 +771,7 @@ class HybridNSGAIII:
             kw["front_size_history"] = np.array(self.front_size_history)
             kw["obj_min_history"]    = np.array(self.obj_min_history)
         np.savez(path, **kw)
-        log.info("Checkpoint saved: %s", path)
+        log.info("妫€鏌ョ偣淇濆瓨: %s", path)
 
     @staticmethod
     def load_checkpoint(path):
@@ -747,7 +788,7 @@ class HybridNSGAIII:
 
     def run(self, resume_ckpt=None):
         log.info("=" * 70)
-        log.info("CO2 well-placement optimization started (hybrid NSGA-III): seeds=%s", self.seeds_path)
+        log.info("CO2浜曚綅浼樺寲鍚姩锛圚ybrid NSGA-III锛? seeds=%s", self.seeds_path)
         log.info("  sim_years=%dyr  N_POP=%d  MAX_GEN=%d  N_PARALLEL=%d",
                  self.sim_years, N_POP, N_GEN, N_PARALLEL)
         log.info("  evaluation=%s",
@@ -773,7 +814,7 @@ class HybridNSGAIII:
                 self.hv_history         = list(extras["hv_history"])
                 self.front_size_history = list(extras["front_size_history"])
                 self.obj_min_history    = [list(r) for r in extras["obj_min_history"]]
-            log.info("Resumed from checkpoint: gen=%d  run_id=%d  hv_history_len=%d",
+            log.info("浠庢鏌ョ偣鎭㈠: gen=%d  run_id=%d  hv_history闀垮害=%d",
                      start_gen, self.run_id, len(self.hv_history))
         else:
             start_gen = 0
@@ -794,7 +835,7 @@ class HybridNSGAIII:
                 self.hv_ref = vmax + HV_REF_SLACK * span
             else:
                 self.hv_ref = np.full(N_OBJ, PENALTY_VALUE)
-            log.info("HV reference point fixed: %s",
+            log.info("HV鍙傝€冪偣宸插浐瀹? %s",
                      np.array2string(self.hv_ref, precision=4))
 
 
@@ -803,7 +844,7 @@ class HybridNSGAIII:
             self.hv_history.append(hv0)
             self.front_size_history.append(fs0)
             self.obj_min_history.append(om0.tolist())
-            log.info("Initial HV=%.4e  |front0|=%d", hv0, fs0)
+            log.info("鍒濆 HV=%.4e  |鍓嶆部0|=%d", hv0, fs0)
             self._save_checkpoint(0, pop, objs)
 
 
@@ -850,9 +891,9 @@ class HybridNSGAIII:
             self.front_size_history.append(fs)
             self.obj_min_history.append(om.tolist())
 
-            log.info("Gen %3d/%d  t=%.0fs  |front0|=%d  HV=%.4e  "
-                     "F1=%.4f  F2_plume_area=%.6f km2  F3_pressure_cv=%.6f  "
-                     "mu_F=%.3f mu_CR=%.3f",
+            log.info("Gen %3d/%d  t=%.0fs  |front|=%d  HV=%.4e  "
+                     "F1=%.4f  F2_plume_km2=%.6f  F3_pressure_cv=%.6f  "
+                     "渭_F=%.3f 渭_CR=%.3f",
                      gen + 1, N_GEN, elapsed, fs, hv,
                      om[0], om[1], om[2],
                      self.mu_F, self.mu_CR)
@@ -921,7 +962,7 @@ class HybridNSGAIII:
                     "F1_pressure_rise": float(obj[0]),
                     "pressure_rise_pct": float(obj[0] * 100),
                     "F2_plume_area_sg0p1_km2": float(obj[1]),
-                    "F3_pressure_heterogeneity_cv": float(obj[2]),
+                    "F3_pressure_CV_std_over_mean": float(obj[2]),
                     "evaluation_backend": (
                         "surrogate" if self.surrogate_model is not None
                         else "high_fidelity_simulation"

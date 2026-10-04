@@ -1,3 +1,12 @@
+\
+\
+\
+\
+\
+\
+\
+\
+\
 
 from __future__ import annotations
 
@@ -138,8 +147,8 @@ def group_summary(name: str, low_mask: np.ndarray, high_mask: np.ndarray, data: 
         "success_ratio_low_all": safe_mean(data["success"][low_mask].astype(float)),
         "success_ratio_high_all": safe_mean(data["success"][high_mask].astype(float)),
         "F1_pressure_rise": mann_whitney(data["F1"][low], data["F1"][high], higher_is_better=False),
-        "F2_plume_area": mann_whitney(data["F2"][low], data["F2"][high], higher_is_better=False),
-        "F3_pressure_cv": mann_whitney(data["F3"][low], data["F3"][high], higher_is_better=False),
+        "dissolution_ratio": mann_whitney(data["dissolution"][low], data["dissolution"][high], higher_is_better=True),
+        "F3_brine_produced": mann_whitney(data["F3"][low], data["F3"][high], higher_is_better=True),
         "max_bhp_ratio": mann_whitney(data["max_bhp_ratio"][low_mask], data["max_bhp_ratio"][high_mask], higher_is_better=False),
         "min_bhp_margin_kpa": mann_whitney(data["min_bhp_margin_kpa"][low_mask], data["min_bhp_margin_kpa"][high_mask], higher_is_better=True),
     }
@@ -197,7 +206,7 @@ def main() -> int:
     min_bhp_margin = np.nanmin(bhp_margin, axis=1)
 
     F1 = objs[:, 0]
-    F2 = objs[:, 1]
+    dissolution = -objs[:, 1]
     F3 = objs[:, 2]
     layout_prior = 0.45 * rank01(inj_mean) + 0.45 * rank01(prod_mean) + 0.05 * inj_top_frac + 0.05 * prod_top_frac
 
@@ -205,7 +214,7 @@ def main() -> int:
         "valid": valid_obj,
         "success": success,
         "F1": F1,
-        "F2": F2,
+        "dissolution": dissolution,
         "F3": F3,
         "max_bhp_ratio": max_bhp_ratio,
         "min_bhp_margin_kpa": min_bhp_margin,
@@ -231,13 +240,13 @@ def main() -> int:
         "well_J_inj_vs_BHP_margin_kPa": spearman(well_j, well_margin),
         "layout_J_inj_mean_vs_max_BHP_ratio": spearman(inj_mean, max_bhp_ratio),
         "layout_J_inj_mean_vs_min_BHP_margin": spearman(inj_mean, min_bhp_margin),
-        "layout_J_inj_mean_vs_F2_valid": spearman(inj_mean[valid_obj], F2[valid_obj]),
+        "layout_J_inj_mean_vs_dissolution_valid": spearman(inj_mean[valid_obj], dissolution[valid_obj]),
         "layout_J_inj_mean_vs_F1_valid": spearman(inj_mean[valid_obj], F1[valid_obj]),
         "layout_J_prod_mean_vs_F3_valid": spearman(prod_mean[valid_obj], F3[valid_obj]),
         "layout_J_prod_mean_vs_F1_valid": spearman(prod_mean[valid_obj], F1[valid_obj]),
         "F3_vs_F1_valid": spearman(F3[valid_obj], F1[valid_obj]),
         "layout_prior_vs_F1_valid": spearman(layout_prior[valid_obj], F1[valid_obj]),
-        "layout_prior_vs_F2_valid": spearman(layout_prior[valid_obj], F2[valid_obj]),
+        "layout_prior_vs_dissolution_valid": spearman(layout_prior[valid_obj], dissolution[valid_obj]),
         "layout_prior_vs_F3_valid": spearman(layout_prior[valid_obj], F3[valid_obj]),
     }
 
@@ -265,7 +274,7 @@ def main() -> int:
                 "max_bhp_ratio",
                 "min_bhp_margin_kpa",
                 "F1",
-                "F2",
+                "dissolution",
                 "F3",
             ],
         )
@@ -286,7 +295,7 @@ def main() -> int:
                     "max_bhp_ratio": max_bhp_ratio[k],
                     "min_bhp_margin_kpa": min_bhp_margin[k],
                     "F1": F1[k],
-                    "F2": F2[k],
+                    "dissolution": dissolution[k],
                     "F3": F3[k],
                 }
             )
@@ -305,7 +314,7 @@ def main() -> int:
         "interpretation": {
             "intended_use": "Prescreen maps are local physics priors for initialization and search guidance, not direct global-response predictors.",
             "strong_evidence_patterns": [
-                "J_prod should be evaluated against pressure relief, plume footprint, and pressure heterogeneity trends.",
+                "J_prod should correlate positively with brine production and negatively with F1 if pressure relief dominates.",
                 "J_inj should correlate with BHP safety metrics more directly than with global F1.",
                 "layout_prior/top-zone groups should show better local safety or pressure-relief indicators than low-prior groups.",
             ],
@@ -324,10 +333,10 @@ def main() -> int:
     axes[0, 0].set_xlabel("J_inj at injection well")
     axes[0, 0].set_ylabel("max BHP / Pf")
 
-    axes[0, 1].scatter(prod_mean[valid], F3[valid], s=30, alpha=0.65, c="#2f8f62", edgecolors="white")
-    axes[0, 1].set_title(f"J_prod vs Pressure CV\nr={correlations['layout_J_prod_mean_vs_F3_valid']['r']:+.3f}")
+    axes[0, 1].scatter(prod_mean[valid], F3[valid] / 1e6, s=30, alpha=0.65, c="#2f8f62", edgecolors="white")
+    axes[0, 1].set_title(f"J_prod vs Brine Production\nr={correlations['layout_J_prod_mean_vs_F3_valid']['r']:+.3f}")
     axes[0, 1].set_xlabel("Mean J_prod at production wells")
-    axes[0, 1].set_ylabel("F3 pressure CV")
+    axes[0, 1].set_ylabel("F3 water produced (Mm3)")
 
     axes[0, 2].scatter(prod_mean[valid], F1[valid] * 100, s=30, alpha=0.65, c="#b85b38", edgecolors="white")
     axes[0, 2].set_title(f"J_prod vs Pressure Rise\nr={correlations['layout_J_prod_mean_vs_F1_valid']['r']:+.3f}")
@@ -341,10 +350,10 @@ def main() -> int:
 
     labels = ["prod low", "prod high"]
     low, high = masks["prod_mean"]
-    box = [F3[low & valid], F3[high & valid]]
+    box = [F3[low & valid] / 1e6, F3[high & valid] / 1e6]
     axes[1, 1].boxplot(box, labels=labels, patch_artist=True)
     axes[1, 1].set_title("F3 by Production Potential Quantile")
-    axes[1, 1].set_ylabel("F3 pressure CV")
+    axes[1, 1].set_ylabel("F3 water produced (Mm3)")
 
     labels = ["prior low", "prior high"]
     low, high = masks["layout_prior"]

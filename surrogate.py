@@ -1,3 +1,10 @@
+\
+\
+\
+\
+\
+\
+\
 
 from __future__ import annotations
 
@@ -36,7 +43,6 @@ N_INJ = 5
 N_PRD = 5
 N_DIM = N_INJ * 2 + N_PRD * 2
 TARGET_LABELS = ("F1", "F2", "F3")
-COMPONENT_TARGET_LABELS = ("F1", "F2", "F3_pressure_std", "F3_pressure_mean")
 _PENALTY_THRESH = 1e8
 _MIN_CLASS_SAMPLES = 5
 
@@ -61,23 +67,24 @@ def _summarize(values):
     return dict(mean=float(np.mean(arr)), std=float(np.std(arr)))
 
 
-def _resolve_target_params(base_params, target_params=None, labels=TARGET_LABELS):
+def _resolve_target_params(base_params, target_params=None):
     base = dict(base_params)
-    labels = tuple(labels)
-    out = [dict(base) for _ in labels]
+    out = [dict(base) for _ in TARGET_LABELS]
     if target_params is None:
         return out
 
     if isinstance(target_params, (list, tuple)):
-        if len(target_params) != len(labels):
-            raise ValueError(f"xgb_target_params list must have {len(labels)} entries")
+        if len(target_params) != len(TARGET_LABELS):
+            raise ValueError(
+                f"xgb_target_params list must have {len(TARGET_LABELS)} entries"
+            )
         for k, override in enumerate(target_params):
             if override:
                 out[k].update(dict(override))
         return out
 
     if isinstance(target_params, dict):
-        for k, label in enumerate(labels):
+        for k, label in enumerate(TARGET_LABELS):
             override = (
                 target_params.get(label)
                 or target_params.get(label.lower())
@@ -88,7 +95,7 @@ def _resolve_target_params(base_params, target_params=None, labels=TARGET_LABELS
                 out[k].update(dict(override))
         return out
 
-    raise TypeError("xgb_target_params must be None, a target-parameter list, or a dict")
+    raise TypeError("xgb_target_params must be None, a 3-list, or a dict")
 
 
 def _align_one(x, ref):
@@ -170,19 +177,15 @@ class SurrogateModel:
         xgb_classifier_params: dict | None = None,
         early_stopping_rounds: int | None = None,
         validation_fraction: float = 0.20,
-        f3_component_mode: bool = False,
     ):
         self.feature_extractor = feature_extractor
         self.with_uncertainty = with_uncertainty
         self.with_failure_classifier = with_failure_classifier
         self.ref_mode = ref_mode
-        self.f3_component_mode = bool(f3_component_mode)
-        self.target_labels = COMPONENT_TARGET_LABELS if self.f3_component_mode else TARGET_LABELS
         self.xgb_params = {**self.DEFAULT_PARAMS, **(xgb_params or {})}
         self.xgb_params_by_target = _resolve_target_params(
             self.xgb_params,
             xgb_target_params,
-            labels=self.target_labels,
         )
         self.xgb_classifier_params = {
             **self.DEFAULT_CLF_PARAMS,
@@ -190,9 +193,6 @@ class SurrogateModel:
         }
         self.early_stopping_rounds = early_stopping_rounds
         self.validation_fraction = float(validation_fraction)
-
-        if self.f3_component_mode and self.with_uncertainty:
-            raise ValueError("with_uncertainty is not supported with f3_component_mode=True")
 
         XGBR = _get_xgb_regressor()
         self.mean_models = [XGBR(**params) for params in self.xgb_params_by_target]
@@ -270,21 +270,13 @@ class SurrogateModel:
             model.fit(X_train, y_train)
         return model
 
-    def _as_objective_targets(self, y):
-        y = np.atleast_2d(np.asarray(y, dtype=float))
-        if self.f3_component_mode and y.shape[1] == 4:
-            f3 = y[:, 2] / np.maximum(y[:, 3], 1.0e-9)
-            return np.column_stack([y[:, 0], y[:, 1], f3])
-        return y
-
     def fit(self, X, y, failure_mask=None):
         X = np.atleast_2d(np.asarray(X, dtype=float))
         y = np.atleast_2d(np.asarray(y, dtype=float))
         if X.shape[1] != N_DIM:
             raise ValueError(f"X must have {N_DIM} cols, got {X.shape[1]}")
-        expected_y_cols = 4 if self.f3_component_mode else 3
-        if y.shape[1] != expected_y_cols:
-            raise ValueError(f"y must have {expected_y_cols} cols ({self.target_labels}), got {y.shape[1]}")
+        if y.shape[1] != 3:
+            raise ValueError(f"y must have 3 cols (F1/F2/F3), got {y.shape[1]}")
         if len(X) != len(y):
             raise ValueError(f"len mismatch: X={len(X)} y={len(y)}")
 
@@ -336,7 +328,7 @@ class SurrogateModel:
                 shuffle=True,
             )
             reg_fit = (Xs_reg[reg_tr], y_reg[reg_tr], Xs_reg[reg_val], y_reg[reg_val])
-        for k in range(len(self.target_labels)):
+        for k in range(3):
             X_tr, y_tr, X_val, y_val = reg_fit
             self._fit_regressor(
                 self.mean_models[k],
@@ -345,13 +337,13 @@ class SurrogateModel:
                 X_val,
                 None if y_val is None else y_val[:, k],
             )
-            self.best_iterations_[self.target_labels[k]] = getattr(
+            self.best_iterations_[f"F{k + 1}"] = getattr(
                 self.mean_models[k],
                 "best_iteration",
                 None,
             )
         if self.with_uncertainty:
-            for k in range(len(self.target_labels)):
+            for k in range(3):
                 self.lo_models[k].fit(Xs_reg, y_reg[:, k])
                 self.hi_models[k].fit(Xs_reg, y_reg[:, k])
 
@@ -408,16 +400,9 @@ class SurrogateModel:
         if not self.fitted:
             raise RuntimeError("call fit() first")
         Xs = self._transform(X)
-        raw = np.column_stack([self.mean_models[k].predict(Xs) for k in range(len(self.target_labels))])
-        if self.f3_component_mode:
-            f3 = raw[:, 2] / np.maximum(raw[:, 3], 1.0e-9)
-            mean = np.column_stack([raw[:, 0], raw[:, 1], f3])
-        else:
-            mean = raw
+        mean = np.column_stack([self.mean_models[k].predict(Xs) for k in range(3)])
         if not return_std:
             return mean
-        if self.f3_component_mode:
-            raise RuntimeError("return_std is not supported with f3_component_mode=True")
         if not self.with_uncertainty:
             raise RuntimeError("surrogate not built with with_uncertainty=True")
         lo = np.column_stack([self.lo_models[k].predict(Xs) for k in range(3)])
@@ -439,7 +424,6 @@ class SurrogateModel:
 
     def score(self, X, y, per_objective: bool = True):
         pred = self.predict(X)
-        y = self._as_objective_targets(y)
         ss_res = ((pred - y) ** 2).sum(axis=0)
         ss_tot = ((y - y.mean(axis=0)) ** 2).sum(axis=0)
         ss_tot = np.where(ss_tot < 1e-12, 1.0, ss_tot)
@@ -448,7 +432,6 @@ class SurrogateModel:
 
     def metrics(self, X, y) -> dict:
         pred = self.predict(X)
-        y = self._as_objective_targets(y)
         err = pred - y
         rmse = np.sqrt((err ** 2).mean(axis=0))
         y_safe = np.where(np.abs(y) < 1e-12, 1.0, y)
@@ -509,7 +492,6 @@ class SurrogateModel:
                 xgb_classifier_params=self.xgb_classifier_params,
                 early_stopping_rounds=self.early_stopping_rounds,
                 validation_fraction=self.validation_fraction,
-                f3_component_mode=self.f3_component_mode,
             )
             tmp.fit(X[tr], y[tr], failure_mask=fail_mask[tr])
 
@@ -602,6 +584,816 @@ def _normalise_field(field, valid_mask):
         return out
     out[valid] = (field[valid] - lo) / (hi - lo)
     return np.clip(out, 0.0, 1.0)
+
+
+class CombinedFeatureExtractor:
+    def __init__(self, extractors):
+        self.extractors = [ex for ex in extractors if ex is not None]
+        names = []
+        for ex in self.extractors:
+            names.extend(list(getattr(ex, "feature_names", [])))
+        self.feature_names = names
+
+    def __call__(self, X):
+        if not self.extractors:
+            return np.empty((np.atleast_2d(X).shape[0], 0), dtype=float)
+        parts = [np.atleast_2d(np.asarray(ex(X), dtype=float)) for ex in self.extractors]
+        return np.hstack(parts)
+
+
+class LayoutSetFeatureExtractor:
+    def __init__(self, ni=268, nj=203, dx=50.0, inj_rate_per_well=288392.0):
+        self.ni = float(ni)
+        self.nj = float(nj)
+        self.dx = float(dx)
+        self.inj_rate_per_well = float(inj_rate_per_well)
+        group_stats = ("min", "p10", "mean", "p90", "max", "std")
+        names = []
+        for group in ("inj", "prod"):
+            names.extend(
+                [
+                    f"{group}_centroid_i",
+                    f"{group}_centroid_j",
+                    f"{group}_spread_mean",
+                    f"{group}_spread_max",
+                    f"{group}_bbox_w",
+                    f"{group}_bbox_h",
+                    f"{group}_bbox_area",
+                    f"{group}_bbox_aspect",
+                ]
+            )
+            names.extend([f"{group}_pair_dist_{s}" for s in group_stats])
+        names.extend([f"inj_prod_pair_dist_{s}" for s in group_stats])
+        names.extend([f"inj_prod_nearest_dist_{s}" for s in group_stats])
+        names.extend(
+            [
+                "inj_prod_centroid_dist",
+                "inj_prod_centroid_di",
+                "inj_prod_centroid_dj",
+                "inj_prod_hungarian_mean_dist",
+                "inj_prod_hungarian_max_dist",
+                "inj_rate_total_norm",
+                "inj_rate_per_well_norm",
+            ]
+        )
+        self.feature_names = names
+
+    @staticmethod
+    def _pair_distances(a, b=None):
+        a = np.asarray(a, dtype=float)
+        if b is None:
+            vals = [
+                float(np.linalg.norm(a[i] - a[j]))
+                for i in range(len(a))
+                for j in range(i + 1, len(a))
+            ]
+        else:
+            b = np.asarray(b, dtype=float)
+            vals = [float(np.linalg.norm(x - y)) for x in a for y in b]
+        return np.asarray(vals if vals else [0.0], dtype=float)
+
+    @staticmethod
+    def _dist_stats(vals):
+        vals = np.asarray(vals, dtype=float)
+        vals = vals[np.isfinite(vals)]
+        if vals.size == 0:
+            vals = np.asarray([0.0], dtype=float)
+        return [
+            float(np.min(vals)),
+            float(np.percentile(vals, 10)),
+            float(np.mean(vals)),
+            float(np.percentile(vals, 90)),
+            float(np.max(vals)),
+            float(np.std(vals)),
+        ]
+
+    def _group_features(self, wells):
+        wells = np.asarray(wells, dtype=float)
+        denom = np.asarray([max(self.ni, 1.0), max(self.nj, 1.0)], dtype=float)
+        wn = wells / denom
+        c = np.mean(wn, axis=0)
+        spread = np.linalg.norm(wn - c, axis=1)
+        width = float(np.max(wn[:, 0]) - np.min(wn[:, 0]))
+        height = float(np.max(wn[:, 1]) - np.min(wn[:, 1]))
+        return [
+            float(c[0]),
+            float(c[1]),
+            float(np.mean(spread)),
+            float(np.max(spread)),
+            width,
+            height,
+            float(width * height),
+            float(width / max(height, 1e-9)),
+        ] + self._dist_stats(self._pair_distances(wn))
+
+    def __call__(self, X):
+        X = np.atleast_2d(np.asarray(X, dtype=float))
+        feats = np.empty((X.shape[0], len(self.feature_names)), dtype=float)
+        denom = np.asarray([max(self.ni, 1.0), max(self.nj, 1.0)], dtype=float)
+        for r, x in enumerate(X):
+            inj = x[: N_INJ * 2].reshape(N_INJ, 2)
+            prod = x[N_INJ * 2 :].reshape(N_PRD, 2)
+            inj_n = inj / denom
+            prod_n = prod / denom
+            row = []
+            row.extend(self._group_features(inj))
+            row.extend(self._group_features(prod))
+            cross = self._pair_distances(inj_n, prod_n)
+            row.extend(self._dist_stats(cross))
+            dmat = np.linalg.norm(inj_n[:, None, :] - prod_n[None, :, :], axis=2)
+            nearest = np.concatenate([np.min(dmat, axis=1), np.min(dmat, axis=0)])
+            row.extend(self._dist_stats(nearest))
+            c_inj = np.mean(inj_n, axis=0)
+            c_prod = np.mean(prod_n, axis=0)
+            _, col = linear_sum_assignment(dmat)
+            match = dmat[np.arange(len(col)), col]
+            total_rate = self.inj_rate_per_well * N_INJ
+            row.extend(
+                [
+                    float(np.linalg.norm(c_inj - c_prod)),
+                    float(c_inj[0] - c_prod[0]),
+                    float(c_inj[1] - c_prod[1]),
+                    float(np.mean(match)),
+                    float(np.max(match)),
+                    float(total_rate / 1.0e6),
+                    float(self.inj_rate_per_well / 1.0e6),
+                ]
+            )
+            feats[r] = row
+        return feats
+
+
+class TriViewFeatureExtractor:
+    def __init__(
+        self,
+        J_conn_xy,
+        J_conn_xz,
+        J_conn_yz,
+        inj_k_range=(41, 80),
+        prod_k_range=(1, 15),
+        bridge_k_range=(16, 40),
+        radius_i=3,
+        radius_j=3,
+    ):
+        self.xy = _normalise_field(np.asarray(J_conn_xy, dtype=float), np.isfinite(J_conn_xy))
+        self.xz = _normalise_field(np.asarray(J_conn_xz, dtype=float), np.isfinite(J_conn_xz))
+        self.yz = _normalise_field(np.asarray(J_conn_yz, dtype=float), np.isfinite(J_conn_yz))
+        if self.xy.shape[0] != self.xz.shape[0] or self.xy.shape[1] != self.yz.shape[0]:
+            raise ValueError(
+                f"tri-view shape mismatch: xy={self.xy.shape}, xz={self.xz.shape}, yz={self.yz.shape}"
+            )
+        self.ni, self.nj = self.xy.shape
+        self.nk = min(self.xz.shape[1], self.yz.shape[1])
+        self.inj_layers = self._layers(inj_k_range)
+        self.prod_layers = self._layers(prod_k_range)
+        self.bridge_layers = self._layers(bridge_k_range)
+        self.all_layers = np.arange(self.nk, dtype=int)
+        self.radius_i = int(radius_i)
+        self.radius_j = int(radius_j)
+        bands = ("inj", "prod", "bridge")
+        groups = ("injw", "prodw")
+        stats = ("mean", "min", "p10", "p90", "lowfrac")
+        names = []
+        for group in groups:
+            for view in ("xz", "yz"):
+                for band in bands:
+                    names.extend([f"{group}_{view}_{band}_{s}" for s in stats])
+            names.extend(
+                [
+                    f"{group}_triview_vertical_barrier",
+                    f"{group}_triview_inj_prod_contrast",
+                    f"{group}_triview_xz_yz_balance",
+                ]
+            )
+        names.extend(
+            [
+                "all_triview_bridge_mean",
+                "all_triview_bridge_min",
+                "all_triview_barrier_mean",
+                "all_triview_inj_prod_contrast",
+                "inj_prod_triview_pair_bridge_mean",
+                "inj_prod_triview_pair_bridge_min",
+            ]
+        )
+        self.feature_names = names
+
+    def _layers(self, k_range):
+        k0, k1 = int(k_range[0]) - 1, int(k_range[1]) - 1
+        k0 = int(np.clip(k0, 0, self.nk - 1))
+        k1 = int(np.clip(k1, 0, self.nk - 1))
+        if k1 < k0:
+            k0, k1 = k1, k0
+        return np.arange(k0, k1 + 1, dtype=int)
+
+    @staticmethod
+    def _stats(vals):
+        vals = np.asarray(vals, dtype=float)
+        vals = vals[np.isfinite(vals)]
+        if vals.size == 0:
+            vals = np.asarray([0.0], dtype=float)
+        return [
+            float(np.mean(vals)),
+            float(np.min(vals)),
+            float(np.percentile(vals, 10)),
+            float(np.percentile(vals, 90)),
+            float(np.mean(vals <= 0.20)),
+        ]
+
+    def _i_band(self, i):
+        i = int(np.clip(round(float(i)), 0, self.ni - 1))
+        lo = max(0, i - self.radius_i)
+        hi = min(self.ni, i + self.radius_i + 1)
+        return slice(lo, hi)
+
+    def _j_band(self, j):
+        j = int(np.clip(round(float(j)), 0, self.nj - 1))
+        lo = max(0, j - self.radius_j)
+        hi = min(self.nj, j + self.radius_j + 1)
+        return slice(lo, hi)
+
+    def _well_view_values(self, well, view, layers):
+        i = int(np.clip(round(float(well[0])), 0, self.ni - 1))
+        j = int(np.clip(round(float(well[1])), 0, self.nj - 1))
+        if view == "xz":
+            return self.xz[self._i_band(i), :][:, layers].reshape(-1)
+        if view == "yz":
+            return self.yz[self._j_band(j), :][:, layers].reshape(-1)
+        raise ValueError(view)
+
+    def _group_view_stats(self, wells, view, layers):
+        vals = [self._well_view_values(well, view, layers) for well in wells]
+        return self._stats(np.concatenate(vals) if vals else np.asarray([0.0]))
+
+    def _group_extra(self, wells):
+        xz_bridge = np.concatenate([self._well_view_values(w, "xz", self.bridge_layers) for w in wells])
+        yz_bridge = np.concatenate([self._well_view_values(w, "yz", self.bridge_layers) for w in wells])
+        xz_inj = np.concatenate([self._well_view_values(w, "xz", self.inj_layers) for w in wells])
+        yz_inj = np.concatenate([self._well_view_values(w, "yz", self.inj_layers) for w in wells])
+        xz_prod = np.concatenate([self._well_view_values(w, "xz", self.prod_layers) for w in wells])
+        yz_prod = np.concatenate([self._well_view_values(w, "yz", self.prod_layers) for w in wells])
+        bridge = np.concatenate([xz_bridge, yz_bridge])
+        inj_vals = np.concatenate([xz_inj, yz_inj])
+        prod_vals = np.concatenate([xz_prod, yz_prod])
+        return [
+            float(np.mean(bridge <= 0.20)),
+            float(np.mean(inj_vals) - np.mean(prod_vals)),
+            float(abs(np.mean(xz_bridge) - np.mean(yz_bridge))),
+        ]
+
+    def _pair_bridge_values(self, inj_wells, prod_wells):
+        vals = []
+        for iw in inj_wells:
+            for pw in prod_wells:
+                i0 = int(np.clip(round(float(min(iw[0], pw[0]))), 0, self.ni - 1))
+                i1 = int(np.clip(round(float(max(iw[0], pw[0]))), 0, self.ni - 1))
+                j0 = int(np.clip(round(float(min(iw[1], pw[1]))), 0, self.nj - 1))
+                j1 = int(np.clip(round(float(max(iw[1], pw[1]))), 0, self.nj - 1))
+                xz = self.xz[i0:i1 + 1, :][:, self.bridge_layers]
+                yz = self.yz[j0:j1 + 1, :][:, self.bridge_layers]
+                vals.append(float(0.5 * (np.mean(xz) + np.mean(yz))))
+        return np.asarray(vals if vals else [0.0], dtype=float)
+
+    def __call__(self, X):
+        X = np.atleast_2d(np.asarray(X, dtype=float))
+        feats = np.empty((X.shape[0], len(self.feature_names)), dtype=float)
+        for r, x in enumerate(X):
+            inj_wells = x[: N_INJ * 2].reshape(N_INJ, 2)
+            prod_wells = x[N_INJ * 2 :].reshape(N_PRD, 2)
+            row = []
+            for wells in (inj_wells, prod_wells):
+                for view in ("xz", "yz"):
+                    for layers in (self.inj_layers, self.prod_layers, self.bridge_layers):
+                        row.extend(self._group_view_stats(wells, view, layers))
+                row.extend(self._group_extra(wells))
+            bridge_all = np.concatenate(
+                [
+                    self._well_view_values(w, "xz", self.bridge_layers)
+                    for w in np.vstack([inj_wells, prod_wells])
+                ]
+                + [
+                    self._well_view_values(w, "yz", self.bridge_layers)
+                    for w in np.vstack([inj_wells, prod_wells])
+                ]
+            )
+            inj_vals = np.concatenate(
+                [
+                    self._well_view_values(w, "xz", self.inj_layers)
+                    for w in inj_wells
+                ]
+                + [
+                    self._well_view_values(w, "yz", self.inj_layers)
+                    for w in inj_wells
+                ]
+            )
+            prod_vals = np.concatenate(
+                [
+                    self._well_view_values(w, "xz", self.prod_layers)
+                    for w in prod_wells
+                ]
+                + [
+                    self._well_view_values(w, "yz", self.prod_layers)
+                    for w in prod_wells
+                ]
+            )
+            pair_bridge = self._pair_bridge_values(inj_wells, prod_wells)
+            row.extend(
+                [
+                    float(np.mean(bridge_all)),
+                    float(np.min(bridge_all)),
+                    float(np.mean(bridge_all <= 0.20)),
+                    float(np.mean(inj_vals) - np.mean(prod_vals)),
+                    float(np.mean(pair_bridge)),
+                    float(np.min(pair_bridge)),
+                ]
+            )
+            feats[r] = row
+        return feats
+
+
+class WellConditionedTriViewFeatureExtractor:
+    def __init__(
+        self,
+        J_inj_3d,
+        J_prod_3d,
+        bound_mask=None,
+        J_global_max_inj=None,
+        J_global_max_prod=None,
+        inj_k_range=(41, 80),
+        prod_k_range=(1, 15),
+        bridge_k_range=(16, 40),
+        radius=3,
+    ):
+        inj = np.asarray(J_inj_3d, dtype=float)
+        prod = np.asarray(J_prod_3d, dtype=float)
+        if inj.shape != prod.shape or inj.ndim != 3:
+            raise ValueError(f"J_inj_3d/J_prod_3d shape mismatch: {inj.shape} vs {prod.shape}")
+        self.inj3 = self._normalise_3d(inj, J_global_max_inj)
+        self.prod3 = self._normalise_3d(prod, J_global_max_prod)
+        self.ni, self.nj, self.nk = inj.shape
+        if bound_mask is None:
+            self.valid_xy = np.ones((self.ni, self.nj), dtype=bool)
+        else:
+            valid = np.asarray(bound_mask, dtype=bool)
+            if valid.shape != (self.ni, self.nj):
+                raise ValueError(f"bound_mask shape mismatch: {valid.shape} vs {(self.ni, self.nj)}")
+            self.valid_xy = valid
+        self.inj_layers = self._layers(inj_k_range)
+        self.prod_layers = self._layers(prod_k_range)
+        self.bridge_layers = self._layers(bridge_k_range)
+        self.radius = int(radius)
+
+        bands = ("target", "other", "bridge")
+        stats = ("center", "local_mean", "local_min", "local_p10", "local_p90", "local_std", "local_highfrac")
+        section_stats = ("section_mean", "section_p90", "section_highfrac")
+        names = []
+        for group in ("injw", "prodw"):
+            for view in ("xz", "yz"):
+                for band in bands:
+                    names.extend([f"{group}_wellcond_{view}_{band}_{s}" for s in stats])
+                    names.extend([f"{group}_wellcond_{view}_{band}_{s}" for s in section_stats])
+            names.extend(
+                [
+                    f"{group}_wellcond_xz_yz_target_balance",
+                    f"{group}_wellcond_target_bridge_contrast",
+                    f"{group}_wellcond_target_other_contrast",
+                    f"{group}_wellcond_bridge_lowfrac",
+                ]
+            )
+        pair_stats = ("mean", "min", "p10", "p90", "std")
+        names.extend([f"inj_prod_wellcond_target_pair_{s}" for s in pair_stats])
+        names.extend([f"inj_prod_wellcond_bridge_pair_{s}" for s in pair_stats])
+        names.extend(
+            [
+                "wellcond_inj_target_minus_prod_target",
+                "wellcond_inj_bridge_minus_prod_bridge",
+                "wellcond_injprod_target_balance",
+                "wellcond_injprod_bridge_balance",
+            ]
+        )
+        self.feature_names = names
+
+    @staticmethod
+    def _normalise_3d(field, global_max):
+        arr = np.asarray(field, dtype=float)
+        if global_max is None:
+            valid = np.isfinite(arr) & (arr > 0.0)
+            denom = float(np.nanmax(arr[valid])) if np.any(valid) else 1.0
+        else:
+            denom = float(np.asarray(global_max, dtype=float))
+        if denom <= 0.0 or not np.isfinite(denom):
+            denom = 1.0
+        out = np.zeros_like(arr, dtype=float)
+        good = np.isfinite(arr)
+        out[good] = arr[good] / denom
+        return np.clip(out, 0.0, 1.0)
+
+    def _layers(self, k_range):
+        k0, k1 = int(k_range[0]) - 1, int(k_range[1]) - 1
+        k0 = int(np.clip(k0, 0, self.nk - 1))
+        k1 = int(np.clip(k1, 0, self.nk - 1))
+        if k1 < k0:
+            k0, k1 = k1, k0
+        return np.arange(k0, k1 + 1, dtype=int)
+
+    def _well_ij(self, well):
+        i = int(np.clip(round(float(well[0])), 0, self.ni - 1))
+        j = int(np.clip(round(float(well[1])), 0, self.nj - 1))
+        return i, j
+
+    def _i_slice(self, i):
+        return slice(max(0, i - self.radius), min(self.ni, i + self.radius + 1))
+
+    def _j_slice(self, j):
+        return slice(max(0, j - self.radius), min(self.nj, j + self.radius + 1))
+
+    @staticmethod
+    def _safe_stats(vals):
+        vals = np.asarray(vals, dtype=float)
+        vals = vals[np.isfinite(vals)]
+        if vals.size == 0:
+            vals = np.asarray([0.0], dtype=float)
+        return [
+            float(np.mean(vals)),
+            float(np.min(vals)),
+            float(np.percentile(vals, 10)),
+            float(np.percentile(vals, 90)),
+            float(np.std(vals)),
+            float(np.mean(vals >= 0.60)),
+        ]
+
+    @staticmethod
+    def _dist_stats(vals):
+        vals = np.asarray(vals, dtype=float)
+        vals = vals[np.isfinite(vals)]
+        if vals.size == 0:
+            vals = np.asarray([0.0], dtype=float)
+        return [
+            float(np.mean(vals)),
+            float(np.min(vals)),
+            float(np.percentile(vals, 10)),
+            float(np.percentile(vals, 90)),
+            float(np.std(vals)),
+        ]
+
+    def _view_arrays(self, field, well, view, layers):
+        i, j = self._well_ij(well)
+        if view == "xz":
+            section = field[:, j, :][:, layers]
+            local = field[self._i_slice(i), j, :][:, layers]
+        elif view == "yz":
+            section = field[i, :, :][:, layers]
+            local = field[i, self._j_slice(j), :][:, layers]
+        else:
+            raise ValueError(view)
+        center = field[i, j, layers]
+        return center, local.reshape(-1), section.reshape(-1)
+
+    def _well_band_features(self, field, well, view, layers):
+        center, local, section = self._view_arrays(field, well, view, layers)
+        local_stats = self._safe_stats(local)
+        return [
+            float(np.mean(center)),
+            *local_stats,
+            float(np.mean(section)),
+            float(np.percentile(section, 90)),
+            float(np.mean(section >= 0.60)),
+        ]
+
+    def _group_features(self, field, wells, target_layers, other_layers):
+        wells = np.asarray(wells, dtype=float)
+        row = []
+        target_means = []
+        other_means = []
+        bridge_means = []
+        xz_target_means = []
+        yz_target_means = []
+        bridge_lows = []
+        for view in ("xz", "yz"):
+            for layers in (target_layers, other_layers, self.bridge_layers):
+                per_well = [self._well_band_features(field, w, view, layers) for w in wells]
+                arr = np.asarray(per_well, dtype=float)
+                row.extend(np.mean(arr, axis=0).tolist())
+                if layers is target_layers:
+                    target_means.extend(arr[:, 1].tolist())
+                    if view == "xz":
+                        xz_target_means.extend(arr[:, 1].tolist())
+                    else:
+                        yz_target_means.extend(arr[:, 1].tolist())
+                elif layers is other_layers:
+                    other_means.extend(arr[:, 1].tolist())
+                else:
+                    bridge_means.extend(arr[:, 1].tolist())
+                    bridge_lows.extend((1.0 - arr[:, 6]).tolist())
+        target = np.asarray(target_means if target_means else [0.0], dtype=float)
+        other = np.asarray(other_means if other_means else [0.0], dtype=float)
+        bridge = np.asarray(bridge_means if bridge_means else [0.0], dtype=float)
+        xz_target = np.asarray(xz_target_means if xz_target_means else [0.0], dtype=float)
+        yz_target = np.asarray(yz_target_means if yz_target_means else [0.0], dtype=float)
+        bridge_low = np.asarray(bridge_lows if bridge_lows else [0.0], dtype=float)
+        row.extend(
+            [
+                float(np.mean(xz_target) - np.mean(yz_target)),
+                float(np.mean(target) - np.mean(bridge)),
+                float(np.mean(target) - np.mean(other)),
+                float(np.mean(bridge_low)),
+            ]
+        )
+        return row
+
+    def _pair_path_values(self, inj_wells, prod_wells, layers):
+        vals = []
+        for iw in np.asarray(inj_wells, dtype=float):
+            ii, ij = self._well_ij(iw)
+            for pw in np.asarray(prod_wells, dtype=float):
+                pi, pj = self._well_ij(pw)
+                i0, i1 = sorted((ii, pi))
+                j0, j1 = sorted((ij, pj))
+                inj_xz = self.inj3[i0:i1 + 1, ij, :][:, layers]
+                prod_yz = self.prod3[pi, j0:j1 + 1, :][:, layers]
+                inj_yz = self.inj3[ii, j0:j1 + 1, :][:, layers]
+                prod_xz = self.prod3[i0:i1 + 1, pj, :][:, layers]
+                vals.append(
+                    float(
+                        0.25
+                        * (
+                            np.mean(inj_xz)
+                            + np.mean(inj_yz)
+                            + np.mean(prod_xz)
+                            + np.mean(prod_yz)
+                        )
+                    )
+                )
+        return np.asarray(vals if vals else [0.0], dtype=float)
+
+    def __call__(self, X):
+        X = np.atleast_2d(np.asarray(X, dtype=float))
+        feats = np.empty((X.shape[0], len(self.feature_names)), dtype=float)
+        for r, x in enumerate(X):
+            inj_wells = x[: N_INJ * 2].reshape(N_INJ, 2)
+            prod_wells = x[N_INJ * 2 :].reshape(N_PRD, 2)
+            row = []
+            inj_part = self._group_features(self.inj3, inj_wells, self.inj_layers, self.prod_layers)
+            prod_part = self._group_features(self.prod3, prod_wells, self.prod_layers, self.inj_layers)
+            row.extend(inj_part)
+            row.extend(prod_part)
+            target_pair = self._pair_path_values(inj_wells, prod_wells, self.inj_layers)
+            bridge_pair = self._pair_path_values(inj_wells, prod_wells, self.bridge_layers)
+            row.extend(self._dist_stats(target_pair))
+            row.extend(self._dist_stats(bridge_pair))
+            inj_target = float(np.mean([inj_part[1], inj_part[31]])) if inj_part else 0.0
+            prod_target = float(np.mean([prod_part[1], prod_part[31]])) if prod_part else 0.0
+            inj_bridge = float(np.mean([inj_part[21], inj_part[51]])) if inj_part else 0.0
+            prod_bridge = float(np.mean([prod_part[21], prod_part[51]])) if prod_part else 0.0
+            row.extend(
+                [
+                    inj_target - prod_target,
+                    inj_bridge - prod_bridge,
+                    abs(inj_target - prod_target),
+                    abs(inj_bridge - prod_bridge),
+                ]
+            )
+            feats[r] = row
+        return feats
+
+
+class StaticWellConditionedTriViewFeatureExtractor:
+    """Per-well XZ/YZ static fields plus continuous initial-pressure context."""
+
+    def __init__(
+        self,
+        static_inj_3d,
+        static_prod_3d,
+        pressure_initial_3d,
+        inj_k_range=(41, 80),
+        prod_k_range=(1, 15),
+        bridge_k_range=(16, 40),
+        radius=3,
+    ):
+        self.static_inj = np.asarray(static_inj_3d, dtype=float)
+        self.static_prod = np.asarray(static_prod_3d, dtype=float)
+        self.pressure = np.asarray(pressure_initial_3d, dtype=float)
+        if (
+            self.static_inj.shape != self.static_prod.shape
+            or self.static_inj.shape != self.pressure.shape
+            or self.static_inj.ndim != 3
+        ):
+            raise ValueError(
+                "static side-view arrays must have the same 3-D shape: "
+                f"{self.static_inj.shape}, {self.static_prod.shape}, {self.pressure.shape}"
+            )
+        self.ni, self.nj, self.nk = self.static_inj.shape
+        self.inj_layers = self._layers(inj_k_range)
+        self.prod_layers = self._layers(prod_k_range)
+        self.bridge_layers = self._layers(bridge_k_range)
+        self.radius = int(radius)
+
+        stats = ("center", "local_mean", "local_min", "local_p10", "local_p90", "local_std")
+        section_stats = ("section_mean", "section_p90")
+        names = []
+        for group in ("injw", "prodw"):
+            for field_name in ("mobility", "pressure"):
+                for view in ("xz", "yz"):
+                    for band in ("target", "other", "bridge"):
+                        names.extend(
+                            [
+                                f"{group}_static_{field_name}_{view}_{band}_{s}"
+                                for s in stats
+                            ]
+                        )
+                        names.extend(
+                            [
+                                f"{group}_static_{field_name}_{view}_{band}_{s}"
+                                for s in section_stats
+                            ]
+                        )
+            names.extend(
+                [
+                    f"{group}_static_xz_yz_target_mobility_balance",
+                    f"{group}_static_target_bridge_mobility_contrast",
+                    f"{group}_static_target_other_mobility_contrast",
+                    f"{group}_static_xz_yz_target_pressure_balance",
+                    f"{group}_static_target_bridge_pressure_contrast",
+                    f"{group}_static_target_other_pressure_contrast",
+                ]
+            )
+        pair_stats = ("mean", "min", "p10", "p90", "std")
+        names.extend([f"inj_prod_static_target_path_{s}" for s in pair_stats])
+        names.extend([f"inj_prod_static_bridge_path_{s}" for s in pair_stats])
+        names.extend(
+            [
+                "static_inj_target_minus_prod_target_mobility",
+                "static_inj_bridge_minus_prod_bridge_mobility",
+                "static_inj_target_minus_prod_target_pressure",
+                "static_inj_bridge_minus_prod_bridge_pressure",
+            ]
+        )
+        self.feature_names = names
+
+    def _layers(self, k_range):
+        k0, k1 = int(k_range[0]) - 1, int(k_range[1]) - 1
+        k0 = int(np.clip(k0, 0, self.nk - 1))
+        k1 = int(np.clip(k1, 0, self.nk - 1))
+        if k1 < k0:
+            k0, k1 = k1, k0
+        return np.arange(k0, k1 + 1, dtype=int)
+
+    def _well_ij(self, well):
+        i = int(np.clip(round(float(well[0])), 0, self.ni - 1))
+        j = int(np.clip(round(float(well[1])), 0, self.nj - 1))
+        return i, j
+
+    def _i_slice(self, i):
+        return slice(max(0, i - self.radius), min(self.ni, i + self.radius + 1))
+
+    def _j_slice(self, j):
+        return slice(max(0, j - self.radius), min(self.nj, j + self.radius + 1))
+
+    @staticmethod
+    def _stats(vals):
+        vals = np.asarray(vals, dtype=float)
+        vals = vals[np.isfinite(vals)]
+        if vals.size == 0:
+            vals = np.asarray([0.0], dtype=float)
+        return [
+            float(np.mean(vals)),
+            float(np.min(vals)),
+            float(np.percentile(vals, 10)),
+            float(np.percentile(vals, 90)),
+            float(np.std(vals)),
+        ]
+
+    @staticmethod
+    def _dist_stats(vals):
+        return StaticWellConditionedTriViewFeatureExtractor._stats(vals)
+
+    def _view_arrays(self, field, well, view, layers):
+        i, j = self._well_ij(well)
+        if view == "xz":
+            section = field[:, j, :][:, layers]
+            local = field[self._i_slice(i), j, :][:, layers]
+        elif view == "yz":
+            section = field[i, :, :][:, layers]
+            local = field[i, self._j_slice(j), :][:, layers]
+        else:
+            raise ValueError(view)
+        center = field[i, j, layers]
+        return center, local.reshape(-1), section.reshape(-1)
+
+    def _band_features(self, field, well, view, layers):
+        center, local, section = self._view_arrays(field, well, view, layers)
+        return [
+            float(np.mean(center)),
+            *self._stats(local),
+            float(np.mean(section)),
+            float(np.percentile(section, 90)),
+        ]
+
+    def _group_features(self, mobility, wells, target_layers, other_layers):
+        row = []
+        mob_target = []
+        mob_bridge = []
+        mob_other = []
+        pressure_target = []
+        pressure_bridge = []
+        pressure_other = []
+        xz_mob_target = []
+        yz_mob_target = []
+        xz_pressure_target = []
+        yz_pressure_target = []
+        for field, field_name, target, other in (
+            (mobility, "mobility", mob_target, mob_other),
+            (self.pressure, "pressure", pressure_target, pressure_other),
+        ):
+            for view in ("xz", "yz"):
+                for layers in (target_layers, other_layers, self.bridge_layers):
+                    per_well = np.asarray(
+                        [self._band_features(field, w, view, layers) for w in wells],
+                        dtype=float,
+                    )
+                    row.extend(np.mean(per_well, axis=0).tolist())
+                    if field_name == "mobility":
+                        if layers is target_layers:
+                            mob_target.extend(per_well[:, 1].tolist())
+                            (xz_mob_target if view == "xz" else yz_mob_target).extend(
+                                per_well[:, 1].tolist()
+                            )
+                        elif layers is other_layers:
+                            mob_other.extend(per_well[:, 1].tolist())
+                        else:
+                            mob_bridge.extend(per_well[:, 1].tolist())
+                    else:
+                        if layers is target_layers:
+                            pressure_target.extend(per_well[:, 1].tolist())
+                            (xz_pressure_target if view == "xz" else yz_pressure_target).extend(
+                                per_well[:, 1].tolist()
+                            )
+                        elif layers is other_layers:
+                            pressure_other.extend(per_well[:, 1].tolist())
+                        else:
+                            pressure_bridge.extend(per_well[:, 1].tolist())
+
+        mob_target = np.asarray(mob_target if mob_target else [0.0])
+        mob_other = np.asarray(mob_other if mob_other else [0.0])
+        mob_bridge = np.asarray(mob_bridge if mob_bridge else [0.0])
+        pressure_target = np.asarray(pressure_target if pressure_target else [0.0])
+        pressure_other = np.asarray(pressure_other if pressure_other else [0.0])
+        pressure_bridge = np.asarray(pressure_bridge if pressure_bridge else [0.0])
+        row.extend(
+            [
+                float(np.mean(xz_mob_target) - np.mean(yz_mob_target)),
+                float(np.mean(mob_target) - np.mean(mob_bridge)),
+                float(np.mean(mob_target) - np.mean(mob_other)),
+                float(np.mean(xz_pressure_target) - np.mean(yz_pressure_target)),
+                float(np.mean(pressure_target) - np.mean(pressure_bridge)),
+                float(np.mean(pressure_target) - np.mean(pressure_other)),
+            ]
+        )
+        return row
+
+    def _pair_path_values(self, inj_wells, prod_wells, layers):
+        values = []
+        for iw in np.asarray(inj_wells, dtype=float):
+            ii, ij = self._well_ij(iw)
+            for pw in np.asarray(prod_wells, dtype=float):
+                pi, pj = self._well_ij(pw)
+                i0, i1 = sorted((ii, pi))
+                j0, j1 = sorted((ij, pj))
+                pieces = [
+                    self.static_inj[i0:i1 + 1, ij, :][:, layers],
+                    self.static_inj[ii, j0:j1 + 1, :][:, layers],
+                    self.static_prod[i0:i1 + 1, pj, :][:, layers],
+                    self.static_prod[pi, j0:j1 + 1, :][:, layers],
+                ]
+                values.append(float(np.mean([np.mean(v) for v in pieces])))
+        return np.asarray(values if values else [0.0], dtype=float)
+
+    def __call__(self, X):
+        X = np.atleast_2d(np.asarray(X, dtype=float))
+        feats = np.empty((X.shape[0], len(self.feature_names)), dtype=float)
+        for r, x in enumerate(X):
+            inj_wells = x[: N_INJ * 2].reshape(N_INJ, 2)
+            prod_wells = x[N_INJ * 2 :].reshape(N_PRD, 2)
+            inj_part = self._group_features(
+                self.static_inj, inj_wells, self.inj_layers, self.prod_layers
+            )
+            prod_part = self._group_features(
+                self.static_prod, prod_wells, self.prod_layers, self.inj_layers
+            )
+            row = list(inj_part) + list(prod_part)
+            target_path = self._pair_path_values(inj_wells, prod_wells, self.inj_layers)
+            bridge_path = self._pair_path_values(inj_wells, prod_wells, self.bridge_layers)
+            row.extend(self._dist_stats(target_path))
+            row.extend(self._dist_stats(bridge_path))
+            row.extend(
+                [
+                    float(inj_part[1] - prod_part[1]),
+                    float(inj_part[21] - prod_part[21]),
+                    float(inj_part[61] - prod_part[61]),
+                    float(inj_part[81] - prod_part[81]),
+                ]
+            )
+            feats[r] = row
+        return feats
 
 
 class PrescreenFeatureExtractor:
@@ -918,6 +1710,24 @@ def make_prescreen_extractor(
         grid_bot_2d=grid_bot_2d,
         include_geometry=include_geometry,
         include_local=include_local,
+    )
+
+
+def make_triview_extractor(
+    J_conn_xy,
+    J_conn_xz,
+    J_conn_yz,
+    inj_k_range=(41, 80),
+    prod_k_range=(1, 15),
+    bridge_k_range=(16, 40),
+):
+    return TriViewFeatureExtractor(
+        J_conn_xy,
+        J_conn_xz,
+        J_conn_yz,
+        inj_k_range=inj_k_range,
+        prod_k_range=prod_k_range,
+        bridge_k_range=bridge_k_range,
     )
 
 

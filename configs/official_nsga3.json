@@ -1,0 +1,36 @@
+{
+  "surrogate": {
+    "path": "<REPO_ROOT>/_organized_active_work_20260817/02_current_333dim_proxy_0_683/component_f3_model_0_683_static_well_triview_log_20260817.joblib",
+    "evaluation": "surrogate"
+  },
+  "search": {
+    "algorithm": "hybrid NSGA-III with JADE differential evolution",
+    "objectives": 3,
+    "population": 240,
+    "generations": 80,
+    "das_dennis_divisions": 12,
+    "reference_points": 91,
+    "parallel_workers": 32,
+    "use_de": true,
+    "use_optimizer_permutation_alignment": true,
+    "use_early_stopping": false,
+    "final_representatives": 16,
+    "random_seed": 42,
+    "note": "The seed is confirmed by exact reproduction of the saved generation-0 population in ckpt_gen0000.npz."
+  },
+  "jade": {
+    "F_initial": 0.5,
+    "CR_initial": 0.9,
+    "adaptation_c": 0.1,
+    "p_best": 0.1
+  },
+  "layout_constraints": {
+    "injectors": 5,
+    "producers": 5,
+    "injector_injector_spacing_m": 200.0,
+    "producer_producer_spacing_m": 200.0,
+    "injector_producer_spacing_m": 300.0,
+    "boundary_margin_cells": 20,
+    "cell_size_m": 50.0
+  }
+}

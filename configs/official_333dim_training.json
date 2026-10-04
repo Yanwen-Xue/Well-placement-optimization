@@ -1,0 +1,48 @@
+{
+  "dataset": {
+    "results": "<REPO_ROOT>/training_data_0_683_333dim/results_0_683_current3obj_rebuilt_with_0603_0604_20260817.npz",
+    "seeds": "<REPO_ROOT>/opt_seeds_0_683_current_mixed_active60_20260813.npz",
+    "static_sideview_fields": "<REPO_ROOT>/prescreen_maps/static_sideview_fields_no_pressure_threshold.npz",
+    "total_rows": 684,
+    "successful_rows": 679,
+    "input_layout_variables": 20
+  },
+  "feature_construction": {
+    "feature_mode": "prescreen_geometry_local_static_well_triview",
+    "prescreen_local_geometry_features": 48,
+    "static_sideview_features": 218,
+    "layout_operating_features": 47,
+    "augmented_features": 313,
+    "total_model_features": 333,
+    "grid": [268, 203, 200],
+    "cell_size_m": 50.0,
+    "injection_layers": [41, 80],
+    "production_layers": [1, 15],
+    "bridge_layers": [16, 40],
+    "side_views": ["XZ", "YZ"],
+    "static_fields": ["mobility_injection", "mobility_production", "initial_pressure"],
+    "side_view_local_radius_cells": 3,
+    "normalization": "field-wise min-max normalization on valid cells; static side-view fields are built without pressure-threshold gating"
+  },
+  "xgboost": {
+    "model_type": "XGBRegressor",
+    "n_estimators": 800,
+    "max_depth": 2,
+    "learning_rate": 0.03,
+    "subsample": 0.9,
+    "colsample_bytree": 0.9,
+    "reg_lambda": 5.0,
+    "min_child_weight": 3.0,
+    "n_jobs": 16,
+    "tree_method": "hist",
+    "device": "cpu",
+    "random_state": 42,
+    "f1_f2_targets": "direct regression",
+    "f3_targets": "log(pressure_std) and log(pressure_mean), reconstructed as std/mean"
+  },
+  "validation": {
+    "test_fraction": 0.2,
+    "split_seed": 42,
+    "cross_validation_folds": 5
+  }
+}

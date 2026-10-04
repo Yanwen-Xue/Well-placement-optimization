@@ -128,3 +128,7 @@ The non-spatial interval statistics reported in manuscript Table 1 and a concise
 description of flow-model settings are in `public_data/model_interval_summary.csv`
 and `public_data/model_parameter_notes.md`. These files do not include spatial
 property grids or site measurements.
+
+## Complete reproducibility release
+
+The complete 333-dimensional feature-construction code, reported XGBoost and NSGA-III configurations, CMG control template, timing audit, dynamic-connectivity analysis, grouped-contribution analysis, score-free/raw-field comparisons, and figure-validation utilities are documented in [REPRODUCIBILITY_RELEASE.md](REPRODUCIBILITY_RELEASE.md). The executable configuration files are in configs/; later reviewer-validation scripts are in supplementary_validation/.

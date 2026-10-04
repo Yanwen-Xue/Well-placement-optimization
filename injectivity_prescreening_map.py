@@ -1,3 +1,20 @@
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
 
 
 import numpy as np
@@ -103,20 +120,27 @@ FILES = {
 
 
 def read_gslib(filepath, value_col=8):
+\
+\
+\
 
-    print(f"  Reading: {os.path.basename(filepath)}")
+    print(f"  读取: {os.path.basename(filepath)}")
     df = pd.read_csv(filepath, sep=r'\s+', skiprows=9, header=None,
                      names=['i','j','k','x','y','z','value'])
 
     expected = 268 * 203 * 200
     if len(df) != expected:
-        print(f"  [Warning] Row count {len(df)} differs from expected {expected}")
+        print(f"  [警告] 行数 {len(df)} 不等于预期 {expected}")
     return df
 
 
 def read_cmg_txt(filepath, NI=204, NJ=215, NK=197):
+\
+\
+\
+\
 
-    print(f"  Reading: {os.path.basename(filepath)}")
+    print(f"  读取: {os.path.basename(filepath)}")
     data = np.zeros((NI, NJ, NK), dtype=np.float64)
     with open(filepath, 'r') as f:
         lines = f.readlines()
@@ -164,17 +188,20 @@ def read_cmg_txt(filepath, NI=204, NJ=215, NK=197):
         if len(arr) == NI:
             data[:, current_j-1, current_k-1] = arr
 
-    print(f"    Shape: {data.shape}, range: [{data.min():.4f}, {data.max():.4f}]")
+    print(f"    形状: {data.shape}, 范围: [{data.min():.4f}, {data.max():.4f}]")
     return data
 
 
 def read_property_txt(filepath, NI, NJ, NK):
+\
+\
+\
 
-    print(f"  Reading: {os.path.basename(filepath)}")
+    print(f"  读取: {os.path.basename(filepath)}")
     with open(filepath, 'r') as f:
         first_line = f.readline().strip()
         dims = list(map(int, first_line.split()))
-        print(f"    Declared grid dimensions: {dims}")
+        print(f"    文件声明网格: {dims}")
         vals = []
         for line in f:
             parts = line.strip().split()
@@ -183,7 +210,7 @@ def read_property_txt(filepath, NI, NJ, NK):
     data = np.array(vals, dtype=np.float64)
     total = NI * NJ * NK
     if len(data) != total:
-        print(f"  [Warning] Data count {len(data)} != {total}")
+        print(f"  [警告] 数据量 {len(data)} != {total}")
         data = data[:total]
     return data.reshape((NI, NJ, NK), order='F')
 
@@ -191,11 +218,11 @@ def read_property_txt(filepath, NI, NJ, NK):
 def main():
     NI, NJ, NK = 268, 203, 200
     print("=" * 70)
-    print("CO2 injection-potential calculation")
+    print("CO2 注入潜力计算程序")
     print("=" * 70)
 
 
-    print("\n[Step 0] Reading CMG data...")
+    print("\n[步骤0] 读取CMG数据...")
 
     pres_3d    = read_cmg_txt(FILES['pressure'],  NI, NJ, NK) * 1e-3
     thick_3d   = read_cmg_txt(FILES['thickness'], NI, NJ, NK)
@@ -206,35 +233,35 @@ def main():
     mu_brine_3d= read_cmg_txt(FILES['mu_water'],  NI, NJ, NK)
     sw_3d      = read_cmg_txt(FILES['sw'],         NI, NJ, NK)
 
-    print("\n  Reading permeability and porosity on the native 268 x 203 x 200 CMG grid...")
+    print("\n  读取渗透率和孔隙度（268×203×200，与CMG同网格，直接读取）...")
     perm_3d = read_property_txt(FILES['perm'], NI, NJ, NK)
     poro_3d = read_property_txt(FILES['poro'], NI, NJ, NK)
 
     perm_3d[perm_3d < 1e-6] = 0.0
     poro_3d[poro_3d < 1e-6] = 0.0
 
-    print(f"    Permeability range: [{perm_3d.min():.4e}, {perm_3d.max():.4f}] mD")
-    print(f"    Porosity range: [{poro_3d.min():.4f}, {poro_3d.max():.4f}]")
+    print(f"    渗透率范围: [{perm_3d.min():.4e}, {perm_3d.max():.4f}] mD")
+    print(f"    孔隙度范围: [{poro_3d.min():.4f}, {poro_3d.max():.4f}]")
 
 
     if pres_3d.max() > 200 or pres_3d.max() < 1:
-        print(f"[Error] Abnormal pressure range: {pres_3d.min():.2f}-{pres_3d.max():.2f} MPa; check input data")
+        print(f"[错误] 压力范围异常: {pres_3d.min():.2f}~{pres_3d.max():.2f} MPa，请检查数据")
         sys.exit(1)
     if mu_co2_3d.max() > 1.0 or mu_co2_3d.min() < 0:
-        print(f"[Error] Abnormal CO2 viscosity range from CMG output: {mu_co2_3d.min():.4f}-{mu_co2_3d.max():.4f} cP")
+        print(f"[错误] CO2粘度范围异常 (CMG输出): {mu_co2_3d.min():.4f}~{mu_co2_3d.max():.4f} cP")
         sys.exit(1)
 
 
-    print("\n[Step 0.5] Computing physical temperature field and CO2 viscosity mu(P,T) using CoolProp/NIST...")
+    print("\n[步骤0.5] 计算物理温度场 + CO2 粘度 μ(P,T) [via CoolProp NIST 标准]...")
 
 
     T_3d = T_SEA_LEVEL_C + GEO_GRADIENT * top_3d / 1000.0
 
     inj_k0_tmp = INJ_K_START - 1
     inj_k1_tmp = INJ_K_END   - 1
-    print(f"    Full-field T_3d range: [{T_3d.min():.2f}, {T_3d.max():.2f}] degC")
-    print(f"    Injection-interval T_3d range: [{T_3d[:,:,inj_k0_tmp:inj_k1_tmp+1].min():.2f}, "
-          f"{T_3d[:,:,inj_k0_tmp:inj_k1_tmp+1].max():.2f}] degC  (k={INJ_K_START} to {INJ_K_END})")
+    print(f"    全场 T_3d  范围: [{T_3d.min():.2f}, {T_3d.max():.2f}] °C")
+    print(f"    INJ 段 T_3d 范围: [{T_3d[:,:,inj_k0_tmp:inj_k1_tmp+1].min():.2f}, "
+          f"{T_3d[:,:,inj_k0_tmp:inj_k1_tmp+1].max():.2f}] °C  (k={INJ_K_START}~{INJ_K_END})")
 
 
     from CoolProp.CoolProp import PropsSI
@@ -246,9 +273,9 @@ def main():
     P_grid_Pa = np.linspace(max(1e6, res_p_min*0.9), res_p_max*1.1, 60)
     T_grid_K  = np.linspace(T_3d.min()+273.15-3, T_3d.max()+273.15+3, 60)
 
-    print(f"    Building mu(P,T) lookup table: P=[{P_grid_Pa.min()/1e6:.1f},{P_grid_Pa.max()/1e6:.1f}] MPa "
-          f" x T=[{T_grid_K.min()-273.15:.1f},{T_grid_K.max()-273.15:.1f}] degC  "
-          f"({len(P_grid_Pa)} x {len(T_grid_K)} points)...")
+    print(f"    构建 μ(P,T) 查表: P∈[{P_grid_Pa.min()/1e6:.1f},{P_grid_Pa.max()/1e6:.1f}] MPa "
+          f"× T∈[{T_grid_K.min()-273.15:.1f},{T_grid_K.max()-273.15:.1f}] °C  "
+          f"({len(P_grid_Pa)}×{len(T_grid_K)} 点)...")
     mu_table_Pas = np.zeros((len(P_grid_Pa), len(T_grid_K)))
     for i, p in enumerate(P_grid_Pa):
         for j, t in enumerate(T_grid_K):
@@ -280,18 +307,18 @@ def main():
     mu_co2_phys_3d = np.where(valid_P, mu_co2_phys_3d, np.nan)
 
     inj_slab = mu_co2_phys_3d[:,:,inj_k0_tmp:inj_k1_tmp+1]
-    print(f"    Physical mu_CO2 full-field range: [{np.nanmin(mu_co2_phys_3d):.4f}, "
+    print(f"    物理 μ_CO2 全场范围: [{np.nanmin(mu_co2_phys_3d):.4f}, "
           f"{np.nanmax(mu_co2_phys_3d):.4f}] cP")
-    print(f"    Physical mu_CO2 injection-interval range: [{np.nanmin(inj_slab):.4f}, "
-          f"{np.nanmax(inj_slab):.4f}] cP  (mean {np.nanmean(inj_slab):.4f})")
-    print(f"    Comparison with CMG gas-viscosity output (zero in no-gas cells): [{mu_co2_3d.min():.4f}, "
+    print(f"    物理 μ_CO2 INJ 段范围: [{np.nanmin(inj_slab):.4f}, "
+          f"{np.nanmax(inj_slab):.4f}] cP  (均值 {np.nanmean(inj_slab):.4f})")
+    print(f"    对比 CMG 输出（无气格子=0）: [{mu_co2_3d.min():.4f}, "
           f"{mu_co2_3d.max():.4f}] cP")
 
 
     mu_co2_3d = mu_co2_phys_3d
 
 
-    print("\n[Step 1] Computing grid coordinates and spacing...")
+    print("\n[步骤1] 计算网格坐标和步长...")
 
 
     k_mid = NK // 2
@@ -305,12 +332,12 @@ def main():
     dy_avg = dj_avg
     dxy_avg = (dx_avg + dy_avg) / 2.0
 
-    print(f"    Mean I-direction spacing di = {dx_avg:.1f} m")
-    print(f"    Mean J-direction spacing dj = {dy_avg:.1f} m")
+    print(f"    I方向平均步长 di = {dx_avg:.1f} m")
+    print(f"    J方向平均步长 dj = {dy_avg:.1f} m")
 
 
     def m_to_grids(dist_m, dx, dy):
-        """Convert a metric distance to a conservative grid-cell distance."""
+        """将距离[m]换算为网格数（用平均步长，取上整保守估计）"""
         avg = (dx + dy) / 2.0
         return max(1, int(np.ceil(dist_m / avg)))
 
@@ -319,13 +346,13 @@ def main():
     D_PROD_PROD_G= m_to_grids(D_PROD_PROD_M, dx_avg, dy_avg)
     D_INJ_PROD_G = m_to_grids(D_INJ_PROD_M,  dx_avg, dy_avg)
 
-    print(f"    Boundary buffer distance: {D_BOUND_M} m -> {D_BOUND_G} grid cells")
-    print(f"    Injection-injection spacing: {D_INJ_INJ_M} m -> {D_INJ_INJ_G} grid cells")
-    print(f"    Production-production spacing: {D_PROD_PROD_M} m -> {D_PROD_PROD_G} grid cells")
-    print(f"    Injection-production spacing: {D_INJ_PROD_M} m -> {D_INJ_PROD_G} grid cells")
+    print(f"    边界安全距离:   {D_BOUND_M}m → {D_BOUND_G} 网格")
+    print(f"    注入井间距:     {D_INJ_INJ_M}m → {D_INJ_INJ_G} 网格")
+    print(f"    采出井间距:     {D_PROD_PROD_M}m → {D_PROD_PROD_G} 网格")
+    print(f"    注采隔离距离:   {D_INJ_PROD_M}m → {D_INJ_PROD_G} 网格")
 
 
-    print("\n[Step 2] Computing caprock fracture pressure using the Eaton relation at the injection perforation top...")
+    print("\n[步骤2] 计算盖层破裂压力（Eaton公式，作用在 INJ perf 顶）...")
 
 
     inj_k0  = INJ_K_START - 1
@@ -353,12 +380,12 @@ def main():
     Pf_caprock = Pp_caprock + (sigma_v_2d - Pp_caprock) * (3.0 * mu) / (2.0 * (1.0 - mu))
 
     print(f"    D_perf_top:    [{D_perf_top.min():.0f}, {D_perf_top.max():.0f}] m")
-    print(f"    sigma_v:        [{sigma_v_2d.min():.2f}, {sigma_v_2d.max():.2f}] MPa")
+    print(f"    σv:            [{sigma_v_2d.min():.2f}, {sigma_v_2d.max():.2f}] MPa")
     print(f"    Pp:            [{Pp_caprock.min():.2f}, {Pp_caprock.max():.2f}] MPa")
     print(f"    Pf_caprock:    [{Pf_caprock.min():.2f}, {Pf_caprock.max():.2f}] MPa")
 
     if Pf_caprock.max() > 100 or Pf_caprock.min() < 0:
-        print("[Warning] Abnormal fracture-pressure range; check caprock depth and density parameters")
+        print(f"[警告] 破裂压力范围异常，请检查盖层深度和密度参数")
 
 
     tvdss_mid_3d = top_3d + 0.5 * thick_3d
@@ -370,7 +397,7 @@ def main():
     print(f"    Pf_mid (INJ):   [{np.nanmin(pf_mid_inj):.2f}, {np.nanmax(pf_mid_inj):.2f}] MPa")
 
 
-    print("\n[Step 3] Computing effective permeability...")
+    print("\n[步骤3] 计算有效渗透率...")
 
 
     kh_3d = perm_3d.copy()
@@ -381,10 +408,10 @@ def main():
 
     keff_brine_3d = kh_3d.copy()
 
-    print(f"    keff_CO2 range: [{keff_co2_3d.min():.4e}, {keff_co2_3d.max():.4f}] mD")
+    print(f"    keff_CO2 范围: [{keff_co2_3d.min():.4e}, {keff_co2_3d.max():.4f}] mD")
 
 
-    print("\n[Step 4] Computing injection pressure over the injection interval k={}-{}...".format(INJ_K_START, INJ_K_END))
+    print("\n[步骤4] 计算注入压力（在 INJ 段 k={}-{}）...".format(INJ_K_START, INJ_K_END))
 
     N_inj_layers = inj_k1 - inj_k0 + 1
 
@@ -439,17 +466,17 @@ def main():
 
     dP_safe = BHP_SAFETY_COEFF * Pf_caprock - Pinj
 
-    print(f"    KH_inj range: [{np.nanmin(KH_inj):.4e}, {np.nanmax(KH_inj):.4f}] mD*m")
-    print(f"    Pinj range: [{np.nanmin(Pinj):.2f}, {np.nanmax(Pinj):.2f}] MPa")
-    print(f"    dP_safe range: [{np.nanmin(dP_safe):.2f}, {np.nanmax(dP_safe):.2f}] MPa")
-    print(f"    Injectable cells: {np.sum(dP_safe > 0)} / {NI*NJ}")
+    print(f"    KH_inj 范围:   [{np.nanmin(KH_inj):.4e}, {np.nanmax(KH_inj):.4f}] mD·m")
+    print(f"    Pinj 范围:     [{np.nanmin(Pinj):.2f}, {np.nanmax(Pinj):.2f}] MPa")
+    print(f"    ΔPsafe 范围:   [{np.nanmin(dP_safe):.2f}, {np.nanmax(dP_safe):.2f}] MPa")
+    print(f"    可注入格点数:  {np.sum(dP_safe > 0)} / {NI*NJ}")
 
     if np.sum(dP_safe > 0) == 0:
-        print("[Error] No cells are injectable (dP_safe <= 0); check caprock/reservoir interval settings")
+        print("[错误] 所有格点均无法注入（ΔPsafe≤0），请检查盖层/储层范围参数")
         sys.exit(1)
 
 
-    print("\n[Step 5] Computing 3D injection potential over the injection interval...")
+    print("\n[步骤5] 计算三维注入潜力（仅 INJ 段）...")
 
     tvdss_top_perf = top_3d[:, :, inj_k1]
     J_inj_3d = np.zeros((NI, NJ, NK))
@@ -476,12 +503,12 @@ def main():
         J_k = np.nan_to_num(J_k, nan=0.0)
         J_inj_3d[:, :, k] = J_k
 
-    print(f"    J_inj_3D range: [{J_inj_3d.min():.4e}, {J_inj_3d.max():.4f}]")
+    print(f"    J_inj_3D 范围: [{J_inj_3d.min():.4e}, {J_inj_3d.max():.4f}]")
     print(f"    BHP_at_k:      [{bhp_at_k_min:.2f}, {bhp_at_k_max:.2f}] MPa")
-    print(f"    dP_safe_k:      [{dpsafe_k_min:.2f}, {dpsafe_k_max:.2f}] MPa")
+    print(f"    ΔPsafe_k:      [{dpsafe_k_min:.2f}, {dpsafe_k_max:.2f}] MPa")
 
 
-    print("\n[Step 6] Computing 3D production potential over the production interval...")
+    print("\n[步骤6] 计算三维采出潜力（仅 PRD 段）...")
 
 
     J_prod_3d = np.zeros((NI, NJ, NK))
@@ -504,16 +531,36 @@ def main():
 
     dP_prod = np.max(pres_3d[:, :, prd_k0:prd_k1+1], axis=2) - P_MIN_PROD
 
-    print(f"    J_prod_3D range: [{J_prod_3d.min():.4e}, {J_prod_3d.max():.4f}]")
+    print(f"    J_prod_3D 范围: [{J_prod_3d.min():.4e}, {J_prod_3d.max():.4f}]")
 
-
-    print("\n[Step 7] Two-dimensional normalization...")
+    print("\n[步骤7] 二维归一化...")
 
     J_global_max_inj  = J_inj_3d[:, :, inj_k0:inj_k1+1].max()
     J_global_max_prod = J_prod_3d[:, :, prd_k0:prd_k1+1].max()
 
+    # Keep the layer-resolved prescreen fields for XZ/YZ diagnostic sections.
+    # The official 2-D maps below remain unchanged.
+    layer_export_path = os.path.join(OUTPUT_DIR, "prescreen_maps", "prescreen_layer_resolved_fields.npz")
+    os.makedirs(os.path.dirname(layer_export_path), exist_ok=True)
+    np.savez_compressed(
+        layer_export_path,
+        J_inj_3d=J_inj_3d,
+        J_prod_3d=J_prod_3d,
+        J_global_max_inj=np.array(J_global_max_inj),
+        J_global_max_prod=np.array(J_global_max_prod),
+        cx_3d=cx_3d,
+        cy_3d=cy_3d,
+        top_3d=top_3d,
+        thick_3d=thick_3d,
+        inj_k_start=np.array(INJ_K_START),
+        inj_k_end=np.array(INJ_K_END),
+        prod_k_start=np.array(PRD_K_START),
+        prod_k_end=np.array(PRD_K_END),
+    )
+    print(f"    Layer-resolved prescreen fields saved: {layer_export_path}")
+
     if J_global_max_inj <= 0:
-        print("[Error] Injection potential is all zero; check input parameters")
+        print("[错误] 注入潜力全为0，请检查参数")
         sys.exit(1)
 
     J_inj_2d  = np.zeros((NI, NJ))
@@ -526,17 +573,17 @@ def main():
     J_inj_2d  /= N_inj_layers
     J_prod_2d /= (prd_k1 - prd_k0 + 1)
 
-    print(f"    J_inj_2D range: [{J_inj_2d.min():.4f}, {J_inj_2d.max():.4f}]")
-    print(f"    J_prod_2D range: [{J_prod_2d.min():.4f}, {J_prod_2d.max():.4f}]")
+    print(f"    J_inj_2D  范围: [{J_inj_2d.min():.4f}, {J_inj_2d.max():.4f}]")
+    print(f"    J_prod_2D 范围: [{J_prod_2d.min():.4f}, {J_prod_2d.max():.4f}]")
 
 
     if SMOOTH_SIGMA > 0:
         J_inj_2d_viz  = gaussian_filter(J_inj_2d,  sigma=SMOOTH_SIGMA)
         J_prod_2d_viz = gaussian_filter(J_prod_2d, sigma=SMOOTH_SIGMA)
-        print(f"    Gaussian smoothing sigma={SMOOTH_SIGMA} grid cells (~{SMOOTH_SIGMA*dxy_avg:.0f} m)")
-        print(f"    Gaussian smoothing sigma={SMOOTH_SIGMA} grid cells (~{SMOOTH_SIGMA*dxy_avg:.0f} m)")
-        print(f"    Smoothed J_inj_2D range: [{J_inj_2d_viz.min():.4f}, {J_inj_2d_viz.max():.4f}]")
-        print(f"    Smoothed J_prod_2D range: [{J_prod_2d_viz.min():.4f}, {J_prod_2d_viz.max():.4f}]")
+        print(f"    高斯平滑 sigma={SMOOTH_SIGMA} 格 (~{SMOOTH_SIGMA*dxy_avg:.0f}m)")
+        print(f"    平滑后 J_inj_2D  范围: [{J_inj_2d_viz.min():.4f}, {J_inj_2d_viz.max():.4f}]")
+        print(f"    平滑后 J_prod_2D 范围: [{J_prod_2d_viz.min():.4f}, {J_prod_2d_viz.max():.4f}]")
+    else:
         J_inj_2d_viz  = J_inj_2d.copy()
         J_prod_2d_viz = J_prod_2d.copy()
 
@@ -645,6 +692,14 @@ def main():
         prod_base_mask=prod_base_mask,
         grid_top_2d=top_3d[:, :, INJ_K_END - 1],
         grid_bot_2d=top_3d[:, :, 0] + thick_3d[:, :, 0],
+        cx_3d=cx_3d,
+        cy_3d=cy_3d,
+        top_3d=top_3d,
+        thick_3d=thick_3d,
+        J_inj_3d=J_inj_3d,
+        J_prod_3d=J_prod_3d,
+        J_global_max_inj=np.array(J_global_max_inj),
+        J_global_max_prod=np.array(J_global_max_prod),
         NI=np.array(NI), NJ=np.array(NJ), NK=np.array(NK),
         INJ_K_START=np.array(INJ_K_START),
         INJ_K_END=np.array(INJ_K_END),
