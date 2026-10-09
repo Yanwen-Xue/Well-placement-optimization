@@ -62,7 +62,11 @@ $env:CMG_POROSITY_FILE="path\to\porosity.txt"
 $env:CMG_PERMEABILITY_FILE="path\to\permeability.txt"
 ```
 
-## Typical Workflow
+## Reproduce the reported results
+
+The exact 333-feature training and NSGA-III commands, including all reported parameter overrides, are in [REPRODUCIBILITY_RELEASE.md](REPRODUCIBILITY_RELEASE.md). Run those commands from the repository root after supplying the external input data listed there. The steps below describe the general workflow; they do not specify the reported training and search settings.
+
+## General workflow
 
 1. Build prescreening maps:
 

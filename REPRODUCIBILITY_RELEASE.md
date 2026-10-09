@@ -6,16 +6,16 @@ This directory records the executable source snapshot and the parameter values u
 
 | Path | Role |
 |---|---|
-| `code/surrogate.py` | Feature concatenation, feature names, normalization, and generic XGBoost surrogate class |
-| `code/validation_tools/train_surrogate.py` | Dataset loading and all feature-extractor construction branches |
-| `code/validation_tools/build_static_sideview_fields.py` | Construction of the static 3-D mobility and initial-pressure fields used by the official side-view descriptors |
-| `code/validation_tools/train_component_f3_surrogate.py` | Official F1/F2 direct models and F3 component model |
-| `code/optimizer.py` | Hybrid NSGA-III/JADE-DE search, repair, constraints, checkpointing, and Pareto export |
-| `code/objectives.py` | F1/F2/F3 definitions and feasibility checks |
-| `code/cmg_runner.py` | CMG input generation, well controls, run schedule, and result extraction |
-| `code/injectivity_prescreening_map.py` | 3-D prescreen field construction and 2-D prescreen maps |
-| `code/validation_tools/` | Validation, extraction, ablation, plotting, and final-case utilities used after training/search |
-| `code/cmg/2026_0421_1day.dat` | CMG input template used by the runner (the licensed SIP/property assets are distributed separately) |
+| `surrogate.py` | Feature concatenation, feature names, normalization, and generic XGBoost surrogate class |
+| `validation_tools/train_surrogate.py` | Dataset loading and all feature-extractor construction branches |
+| `validation_tools/build_static_sideview_fields.py` | Construction of the static 3-D mobility and initial-pressure fields used by the official side-view descriptors |
+| `validation_tools/train_component_f3_surrogate.py` | Official F1/F2 direct models and F3 component model |
+| `optimizer.py` | Hybrid NSGA-III/JADE-DE search, repair, constraints, checkpointing, and Pareto export |
+| `objectives.py` | F1/F2/F3 definitions and feasibility checks |
+| `cmg_runner.py` | CMG input generation, well controls, run schedule, and result extraction |
+| `injectivity_prescreening_map.py` | 3-D prescreen field construction and 2-D prescreen maps |
+| `validation_tools/` | Validation, extraction, ablation, plotting, and final-case utilities used after training/search |
+| `cmg/2026_0421_1day.dat` | CMG input template used by the runner (the licensed SIP/property assets are distributed separately) |
 | `supplementary_validation/datasources/` | Later dynamic-connectivity, grouped-contribution, timing, aggregation, raw-field, score-free, and Reviewer 8/11 validation scripts |
 | `supplementary_validation/other/` | Ablation runner, baseline optimizer, and paper-figure audit scripts |
 
@@ -34,27 +34,28 @@ Thus the model input is `20 + 48 + 218 + 47 = 333` columns. The feature names ar
 
 ## Rebuild the static side-view fields
 
-From this release directory (replace `<REPO_ROOT>` with the local checkout; if `code/` is merged into the repository root, remove the `code/` prefix):
+Run the following PowerShell commands from the repository root after placing the required external inputs at the paths shown below:
 
 ```powershell
-python code/validation_tools/build_static_sideview_fields.py `
-  --property-dir <REPO_ROOT>/property_CMG `
-  --seeds <REPO_ROOT>/opt_seeds_0_683_current_mixed_active60_20260813.npz `
-  --out <REPO_ROOT>/prescreen_maps/static_sideview_fields_no_pressure_threshold.npz
+$repoRoot = (Get-Location).Path
+python validation_tools/build_static_sideview_fields.py `
+  --property-dir "$repoRoot/property_CMG" `
+  --seeds "$repoRoot/opt_seeds_0_683_current_mixed_active60_20260813.npz" `
+  --out "$repoRoot/prescreen_maps/static_sideview_fields_no_pressure_threshold.npz"
 ```
 
-The field builder uses the 268 x 203 x 200 grid, layers 41‚Ä?0 for injection, 1‚Ä?5 for production, and 16‚Ä?0 for the bridge interval. Plot-only Gaussian smoothing is not used in the 218 model features.
+The field builder uses the 268 x 203 x 200 grid, layers 41‚Äì80 for injection, 1‚Äì15 for production, and 16‚Äì40 for the bridge interval. Plot-only Gaussian smoothing is not used in the 218 model features.
 
 ## Train the reported surrogate
 
-The following command reproduces the official training protocol (543/136 train/test split, five-fold training-only cross-validation, and the XGBoost values in `official_333dim_training.json`):
+The following command uses the reported 543/136 train/test split, a separate five-fold cross-validation over all 679 successful layouts, and the XGBoost values in `official_333dim_training.json`:
 
 ```powershell
-python code/validation_tools/train_component_f3_surrogate.py `
-  --results <REPO_ROOT>/training_data_0_683_333dim/results_0_683_current3obj_rebuilt_with_0603_0604_20260817.npz `
-  --seeds <REPO_ROOT>/opt_seeds_0_683_current_mixed_active60_20260813.npz `
-  --model-out <REPO_ROOT>/models/component_f3_model_0_683_static_well_triview_log.joblib `
-  --report-out <REPO_ROOT>/models/component_f3_metrics_0_683_static_well_triview_log.json `
+python validation_tools/train_component_f3_surrogate.py `
+  --results "$repoRoot/training_data_0_683_333dim/results_0_683_current3obj_rebuilt_with_0603_0604_20260817.npz" `
+  --seeds "$repoRoot/opt_seeds_0_683_current_mixed_active60_20260813.npz" `
+  --model-out "$repoRoot/models/component_f3_model_0_683_static_well_triview_log.joblib" `
+  --report-out "$repoRoot/models/component_f3_metrics_0_683_static_well_triview_log.json" `
   --feature-mode prescreen_geometry_local_static_well_triview `
   --test-size 0.20 --split-seed 42 --cv-splits 5 `
   --n-jobs 16 --n-estimators 800 --max-depth 2 `
@@ -69,9 +70,9 @@ F1 and F2 are fitted directly. F3 is reconstructed from separate log-space model
 The reported run used the surrogate backend, population 240, 80 generations, 12 Das‚ÄìDennis divisions (91 reference points), JADE-DE, Hungarian permutation alignment, 32 workers, and no adaptive early stopping:
 
 ```powershell
-python code/optimizer.py `
-  --seeds <REPO_ROOT>/opt_seeds_0_683_current_mixed_active60_20260813.npz `
-  --surrogate <REPO_ROOT>/models/component_f3_model_0_683_static_well_triview_log.joblib `
+python optimizer.py `
+  --seeds "$repoRoot/opt_seeds_0_683_current_mixed_active60_20260813.npz" `
+  --surrogate "$repoRoot/models/component_f3_model_0_683_static_well_triview_log.joblib" `
   --pop 240 --gen 80 --ref-p 12 --parallel 32 --final-k 16 `
   --use-de --use-opt-perm-align --no-early-stop --seed 42
 ```
@@ -80,7 +81,7 @@ The seed 42 reproduces the saved generation-0 population exactly; the supplied `
 
 ## CMG simulation protocol
 
-`cmg_runner.py` generates the CMG input from the supplied template and writes the well controls. The 80-year schedule injects through year 30 and then shuts in the injectors and producers; monitoring dates continue at five-year intervals. There are five injectors completed in layers 41‚Ä?0 at 288,392 Nm¬≥ day‚Åª¬?per well and five producers completed in layers 1‚Ä?5 with a 1,200 STW maximum and 8,000 kPa minimum BHP. Injection BHP is constrained by the Eaton fracture-pressure estimate multiplied by 0.90 and the implementation safety factor 0.99. Grid size, well geometry, numerical controls, and file names are in `configs/cmg_simulation.json`.
+`cmg_runner.py` generates the CMG input from the supplied template and writes the well controls. The 80-year schedule injects through year 30 and then shuts in the injectors and producers; monitoring dates continue at five-year intervals. There are five injectors completed in layers 41‚Äì80 at 288,392 Nm¬≥ day‚Åª¬π per well and five producers completed in layers 1‚Äì15 with a 1,200 STW maximum and 8,000 kPa minimum BHP. Injection BHP is constrained by the Eaton fracture-pressure estimate multiplied by 0.90 and the implementation safety factor 0.99. Grid size, well geometry, numerical controls, and file names are in `configs/cmg_simulation.json`.
 
 ## Data required to execute
 
