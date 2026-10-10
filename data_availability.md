@@ -5,7 +5,15 @@ The Python source code is provided for transparency and reproducibility of the w
 The geological model, reservoir-model input files, petrophysical property grids, and
 full-physics simulation outputs used in this study are derived from the Shenhua Ordos CO2
 geological storage demonstration project and are subject to confidentiality restrictions.
-Therefore, these data are not publicly available.
+Therefore, those source files are not publicly available.
+
+The derived arrays required to reproduce the reported 333-feature surrogate training are
+provided under `public_data/reproduction_333/`: the two plan-view prescreen maps and
+total-thickness map, three derived static side-view fields, and the 684-row layout/response
+training table. The directory also includes a verification report with feature names,
+split indices, parameters, and performance metrics. These are model-derived training
+inputs; they do not include the original facies, porosity, permeability, or layer-surface
+grids, CMG input files, or simulation binaries.
 
 Public derived data are provided under `public_data/paper_cases_1_8/`. These files
 contain the paper-case mapping, selected well coordinates, pressure and plume

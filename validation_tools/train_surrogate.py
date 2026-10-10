@@ -285,12 +285,21 @@ def build_feature_extractor(seeds_path: Path, feature_mode: str):
         static_missing = [k for k in static_required if k not in static.files]
         if static_missing:
             raise KeyError(f"missing static side-view arrays in {static_path}: {static_missing}")
+        if "grid_thickness_2d" in seeds.files:
+            # The public training release stores the derived thickness map, not
+            # the geological top and bottom surfaces. Only their absolute
+            # difference enters the four thickness descriptors.
+            grid_top_2d = np.zeros_like(seeds["grid_thickness_2d"])
+            grid_bot_2d = seeds["grid_thickness_2d"]
+        else:
+            grid_top_2d = seeds["grid_top_2d"] if "grid_top_2d" in seeds.files else None
+            grid_bot_2d = seeds["grid_bot_2d"] if "grid_bot_2d" in seeds.files else None
         base = surrogate.make_prescreen_extractor(
             seeds["J_inj_2d"],
             seeds["J_prod_2d"],
             seeds["bound_mask"],
-            grid_top_2d=seeds["grid_top_2d"] if "grid_top_2d" in seeds.files else None,
-            grid_bot_2d=seeds["grid_bot_2d"] if "grid_bot_2d" in seeds.files else None,
+            grid_top_2d=grid_top_2d,
+            grid_bot_2d=grid_bot_2d,
             include_geometry=True,
             include_local=True,
         )

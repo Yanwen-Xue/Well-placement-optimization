@@ -1,8 +1,8 @@
 {
   "dataset": {
-    "results": "<REPO_ROOT>/training_data_0_683_333dim/results_0_683_current3obj_rebuilt_with_0603_0604_20260817.npz",
-    "seeds": "<REPO_ROOT>/opt_seeds_0_683_current_mixed_active60_20260813.npz",
-    "static_sideview_fields": "<REPO_ROOT>/prescreen_maps/static_sideview_fields_no_pressure_threshold.npz",
+    "results": "<REPO_ROOT>/public_data/reproduction_333/training_responses_684.npz",
+    "seeds": "<REPO_ROOT>/public_data/reproduction_333/training_prescreen_fields.npz",
+    "static_sideview_fields": "<REPO_ROOT>/public_data/reproduction_333/prescreen_maps/static_sideview_fields_no_pressure_threshold.npz",
     "total_rows": 684,
     "successful_rows": 679,
     "input_layout_variables": 20

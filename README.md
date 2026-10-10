@@ -45,8 +45,9 @@ Injection wells are constrained by a location-specific bottom-hole-pressure limi
 
 ## Required External Files
 
-The geological model, CMG input files, and SR3 simulation outputs are not included because
-they contain confidential reservoir information and commercial simulator outputs.
+The original geological model, CMG input files, and SR3 simulation outputs are not included.
+The derived arrays needed to reproduce the reported 333-feature surrogate training are included
+in `public_data/reproduction_333/`.
 
 To run the full workflow, provide local files through environment variables:
 
@@ -64,7 +65,7 @@ $env:CMG_PERMEABILITY_FILE="path\to\permeability.txt"
 
 ## Reproduce the reported results
 
-The exact 333-feature training and NSGA-III commands, including all reported parameter overrides, are in [REPRODUCIBILITY_RELEASE.md](REPRODUCIBILITY_RELEASE.md). Run those commands from the repository root after supplying the external input data listed there. The steps below describe the general workflow; they do not specify the reported training and search settings.
+The exact 333-feature training and NSGA-III commands, including all reported parameter overrides, are in [REPRODUCIBILITY_RELEASE.md](REPRODUCIBILITY_RELEASE.md). The surrogate training command runs with the included derived arrays. The original NSGA-III run and CMG simulations require the additional inputs specified there. The steps below describe the general workflow; they do not specify the reported training and search settings.
 
 ## General workflow
 
