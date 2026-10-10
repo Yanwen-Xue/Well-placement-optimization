@@ -261,7 +261,7 @@ class HybridNSGAIII:
         self.inj_seeds  = data["inj_wells"]
         self.prod_seeds = data["prod_wells"]
         self.bound_mask = data["bound_mask"].astype(bool)
-        self.grid_top   = data["grid_top_2d"]
+        self.grid_top   = data["grid_top_2d"] if "grid_top_2d" in data else None
 
 
         self.grid_bot   = data["grid_bot_2d"] if "grid_bot_2d" in data else None
@@ -391,6 +391,8 @@ class HybridNSGAIII:
             )
             return obj
 
+        if self.grid_top is None:
+            raise ValueError("full-physics evaluation requires grid_top_2d in the seed file")
         inj, prod = self._decode(x)
         rid       = self.run_id
         self.run_id += 1
@@ -420,6 +422,8 @@ class HybridNSGAIII:
             log.info("[%s] surrogate batch evaluated: %d/%d feasible predictions", tag, valid, n)
             return objs
 
+        if self.grid_top is None:
+            raise ValueError("full-physics evaluation requires grid_top_2d in the seed file")
         if N_PARALLEL <= 1:
             for i, x in enumerate(pop):
                 objs[i] = self._eval_one(x, sim_years, tag=f"{tag}[{i+1:02d}]",
@@ -480,7 +484,7 @@ class HybridNSGAIII:
         return [fr for fr in fronts if fr]
 
 
-    def _nsga3_select(self, combined_pop, combined_objs, n_keep):
+    def _nsga3_select(self, combined_pop, combined_objs, n_keep, rng):
 \
 \
 \
@@ -577,7 +581,7 @@ class HybridNSGAIII:
                 active_refs = list(set(lf_assoc))
                 min_rho = min(rho[j] for j in active_refs)
                 cands_ref = [j for j in active_refs if rho[j] == min_rho]
-                chosen_ref = cands_ref[np.random.randint(len(cands_ref))]
+                chosen_ref = cands_ref[rng.integers(len(cands_ref))]
 
 
                 assoc_lf = [idx for idx in lf_set if assoc[idx] == chosen_ref]
@@ -586,7 +590,7 @@ class HybridNSGAIII:
                     best = min(assoc_lf,
                                key=lambda idx: dist_to_ref[idx, chosen_ref])
                 else:
-                    best = assoc_lf[np.random.randint(len(assoc_lf))]
+                    best = assoc_lf[rng.integers(len(assoc_lf))]
 
                 chosen.append(best)
                 rho[chosen_ref] += 1
@@ -873,7 +877,7 @@ class HybridNSGAIII:
 
             combined_pop  = np.vstack([pop, trials])
             combined_objs = np.vstack([objs, trial_objs])
-            pop, objs, sel_idx = self._nsga3_select(combined_pop, combined_objs, N_POP)
+            pop, objs, sel_idx = self._nsga3_select(combined_pop, combined_objs, N_POP, rng)
 
 
             if self.use_de:

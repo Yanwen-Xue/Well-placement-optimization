@@ -7,6 +7,7 @@ opt_runs/
 opt_runs_lhs_doe/
 opt_runs_lhs_doe_export/
 opt_runs_pareto_validation_export/
+models/
 
 # Local full-physics comparison runs; source files may contain confidential paths.
 compare/

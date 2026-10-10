@@ -65,7 +65,7 @@ $env:CMG_PERMEABILITY_FILE="path\to\permeability.txt"
 
 ## Reproduce the reported results
 
-The exact 333-feature training and NSGA-III commands, including all reported parameter overrides, are in [REPRODUCIBILITY_RELEASE.md](REPRODUCIBILITY_RELEASE.md). The surrogate training command runs with the included derived arrays. The original NSGA-III run and CMG simulations require the additional inputs specified there. The steps below describe the general workflow; they do not specify the reported training and search settings.
+The exact 333-feature training and surrogate NSGA-III commands, including all reported parameter overrides, are in [REPRODUCIBILITY_RELEASE.md](REPRODUCIBILITY_RELEASE.md). Both run with the included derived arrays and search seed. CMG simulations require the additional site-model inputs specified there. The steps below describe the general workflow; they do not specify the reported training and search settings.
 
 ## General workflow
 

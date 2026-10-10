@@ -10,7 +10,7 @@ Therefore, those source files are not publicly available.
 The derived arrays required to reproduce the reported 333-feature surrogate training are
 provided under `public_data/reproduction_333/`: the two plan-view prescreen maps and
 total-thickness map, three derived static side-view fields, and the 684-row layout/response
-training table. The directory also includes a verification report with feature names,
+training table and a compact seed for the surrogate NSGA-III search. The directory also includes a verification report with feature names,
 split indices, parameters, and performance metrics. These are model-derived training
 inputs; they do not include the original facies, porosity, permeability, or layer-surface
 grids, CMG input files, or simulation binaries.
