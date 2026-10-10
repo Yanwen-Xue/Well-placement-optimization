@@ -51,6 +51,7 @@ The field builder uses the 268 x 203 x 200 grid, layers 41–80 for injection, 1
 The following command runs from a fresh repository checkout with the included derived arrays. It uses the reported 543/136 train/test split, a separate five-fold cross-validation over all 679 successful layouts, and the XGBoost values in `official_333dim_training.json`:
 
 ```powershell
+$repoRoot = (Get-Location).Path
 python validation_tools/train_component_f3_surrogate.py `
   --results "$repoRoot/public_data/reproduction_333/training_responses_684.npz" `
   --seeds "$repoRoot/public_data/reproduction_333/training_prescreen_fields.npz" `
@@ -72,6 +73,7 @@ The three released arrays and an independently generated training report, includ
 The reported run used the surrogate backend, population 240, 80 generations, 12 Das–Dennis divisions (91 reference points), JADE-DE, Hungarian permutation alignment, 32 workers, and no adaptive early stopping:
 
 ```powershell
+$repoRoot = (Get-Location).Path
 python optimizer.py `
   --seeds "$repoRoot/opt_seeds_0_683_current_mixed_active60_20260813.npz" `
   --surrogate "$repoRoot/models/component_f3_model_0_683_static_well_triview_log.joblib" `
