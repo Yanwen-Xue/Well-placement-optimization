@@ -1,6 +1,6 @@
 {
   "surrogate": {
-    "path": "<REPO_ROOT>/_organized_active_work_20260817/02_current_333dim_proxy_0_683/component_f3_model_0_683_static_well_triview_log_20260817.joblib",
+    "path": "<REPO_ROOT>/models/component_f3_model_0_683_static_well_triview_log.joblib",
     "evaluation": "surrogate"
   },
   "search": {

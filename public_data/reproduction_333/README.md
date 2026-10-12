@@ -18,6 +18,8 @@ The compact search seed contains no 3-D geometry or SIP data. Its fields match t
 fields of the original search seed and reproduce the saved generation-0 checkpoint with seed 42.
 It can be rebuilt from the other released arrays by running
 `python validation_tools/build_public_search_seed.py` from the repository root.
+The released optimizer routes all stochastic choices through that seed and records the
+generator and adaptive JADE states in new checkpoints for exact continuation.
 
 The 684-row table contains 679 successful, finite training layouts. With the published
 command, 543 rows enter the training split and 136 the holdout split; five-fold CV uses all
