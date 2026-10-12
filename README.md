@@ -45,7 +45,8 @@ Injection wells are constrained by a location-specific bottom-hole-pressure limi
 
 ## Required External Files
 
-The original geological model, CMG input files, and SR3 simulation outputs are not included.
+The site-specific geological model, SIP file, three-dimensional property grids, and raw SR3
+simulation outputs are not included. A generic CMG control template is provided.
 The derived arrays needed to reproduce the reported 333-feature surrogate training are included
 in `public_data/reproduction_333/`.
 
@@ -119,7 +120,8 @@ Paper-facing derived tables for the eight selected layouts are provided in
 0--80 year response summaries, paired differences, Pareto-screening records, and
 matched-layout controls. The original CMG `.sr3` result files are documented in
 `sr3_manifest.csv` but are not included because each file is approximately 9--10 GB.
-SIP files, geological model files, property grids, and CMG input files remain excluded.
+The site-specific SIP file, geological model, three-dimensional property grids, and raw SR3
+outputs remain excluded; the generic CMG control template is included.
 
 The complete derived response tables are provided in `public_data/`. The file
 `Supplementary_Data_679_Layouts_Three_Responses.csv` contains the five injector and five
@@ -127,7 +129,8 @@ producer well locations as zero-based model-grid I/J indices, the three response
 all 679 completed layouts, and the pressure-peak time. The file
 `Supplementary_Data_Pareto_240_Layouts_Three_Responses.csv` contains the same well-location
 fields and the three surrogate-predicted responses for the 240 non-dominated layouts. These
-tables contain no geological model, CMG input, SIP file, or SR3 output.
+tables contain no site-specific geological model, SIP file, three-dimensional property grid,
+or raw SR3 output.
 
 The non-spatial interval statistics reported in manuscript Table 1 and a concise
 description of flow-model settings are in `public_data/model_interval_summary.csv`

@@ -9,7 +9,7 @@
     "completion_layers": [41, 80],
     "surface_rate_Nm3_day_per_well": 288392.0,
     "control": "MAX STG, CONT REPEAT",
-    "BHP_control": "MAX BHP at 0.90*Eaton fracture pressure*0.99"
+    "BHP_control": "MAX BHP enforcing the study-defined 0.90*Eaton fracture-pressure limit"
   },
   "production": {
     "well_count": 5,
