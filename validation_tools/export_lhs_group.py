@@ -14,11 +14,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import cmg_runner
-from validation_tools.export_pareto_validation_groups import RUN_GROUP_PS1, SIP_NAME
 
 
 DEFAULT_LHS_NPZ = ROOT / "opt_seeds_lhs.npz"
 DEFAULT_EXPORT_ROOT = ROOT / "opt_runs_lhs_doe_export"
+DEFAULT_SIP_CANDIDATES = (
+    ROOT / "cmg" / "2026_0421.sip",
+    Path("F:/other/cmg/2026_0421.sip"),
+)
 
 
 def build_manifest(cases: list[dict], group_name: str) -> dict:
@@ -40,11 +43,15 @@ def main() -> int:
     parser.add_argument("--start", type=int, required=True, help="inclusive sample index")
     parser.add_argument("--stop", type=int, required=True, help="exclusive sample index")
     parser.add_argument("--sim-years", type=int, default=80)
-    parser.add_argument("--max-parallel", type=int, default=2)
     parser.add_argument(
         "--runner-template",
+        default=str(DEFAULT_EXPORT_ROOT / "machine_5" / "run_group.ps1"),
+        help="existing run_group.ps1 to copy into the exported group",
+    )
+    parser.add_argument(
+        "--sip-template",
         default="",
-        help="optional existing run_group.ps1 to copy into the exported group",
+        help="SIP file to copy into group_dir/cmg/2026_0421.sip; auto-detected if omitted",
     )
     args = parser.parse_args()
 
@@ -92,23 +99,26 @@ def main() -> int:
     with open(group_dir / "manifest.json", "w", encoding="utf-8") as f:
         json.dump(build_manifest(cases, args.group_name), f, indent=2, ensure_ascii=False)
 
-    if args.runner_template:
-        runner_template = Path(args.runner_template)
-        if not runner_template.exists():
-            raise FileNotFoundError(f"runner template not found: {runner_template}")
-        shutil.copy2(runner_template, group_dir / "run_group.ps1")
-    else:
-        ps1 = (
-            RUN_GROUP_PS1
-            .replace("__CMG_EXE__", cmg_runner.CMG_EXE)
-            .replace("__MAX_PARALLEL__", str(int(args.max_parallel)))
-            .replace("__SIP_NAME__", SIP_NAME)
+    runner_template = Path(args.runner_template)
+    if not runner_template.exists():
+        raise FileNotFoundError(f"runner template not found: {runner_template}")
+    shutil.copy2(runner_template, group_dir / "run_group.ps1")
+
+    sip_template = Path(args.sip_template) if args.sip_template else None
+    if sip_template is None:
+        sip_template = next((p for p in DEFAULT_SIP_CANDIDATES if p.exists()), None)
+    if sip_template is None or not sip_template.exists():
+        raise FileNotFoundError(
+            "SIP template not found. Pass --sip-template or place 2026_0421.sip under F:/other/cmg."
         )
-        (group_dir / "run_group.ps1").write_text(ps1, encoding="utf-8")
+    sip_dir = group_dir / "cmg"
+    sip_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(sip_template, sip_dir / "2026_0421.sip")
 
     print(f"Export group   : {group_dir}")
     print(f"Sample indices : {start}..{stop - 1}")
     print(f"Cases          : {stop - start}")
+    print(f"SIP file       : {sip_dir / '2026_0421.sip'}")
     return 0
 
 

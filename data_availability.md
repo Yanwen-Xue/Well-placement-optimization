@@ -5,7 +5,15 @@ The Python source code is provided for transparency and reproducibility of the w
 The geological model, reservoir-model input files, petrophysical property grids, and
 full-physics simulation outputs used in this study are derived from the Shenhua Ordos CO2
 geological storage demonstration project and are subject to confidentiality restrictions.
-Therefore, these data are not publicly available.
+Therefore, those source files are not publicly available.
+
+The derived arrays required to reproduce the reported 333-feature surrogate training are
+provided under `public_data/reproduction_333/`: the two plan-view prescreen maps and
+total-thickness map, three derived static side-view fields, and the 684-row layout/response
+training table and a compact seed for the surrogate NSGA-III search. The directory also includes a verification report with feature names,
+split indices, parameters, and performance metrics. These are model-derived training
+inputs; they do not include the original facies, porosity, permeability, or layer-surface
+grids, site-specific SIP file, or raw simulation outputs.
 
 Public derived data are provided under `public_data/paper_cases_1_8/`. These files
 contain the paper-case mapping, selected well coordinates, pressure and plume
@@ -21,7 +29,8 @@ are derived layout and response tables only and contain no restricted model file
 
 The eight selected CMG SR3 files are listed in `public_data/paper_cases_1_8/sr3_manifest.csv`
 but are not included in the GitHub repository because each file is approximately
-9--10 GB. SIP files and CMG input files are also excluded.
+9--10 GB. The site-specific SIP file and three-dimensional property grids are also excluded.
+A generic CMG control template is included to document the well controls and simulation schedule.
 
 Non-spatial interval statistics already reported in the manuscript and selected
 flow-model settings are provided in `public_data/model_interval_summary.csv` and

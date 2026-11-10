@@ -1,3 +1,25 @@
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
 
 
 from __future__ import annotations
@@ -25,7 +47,7 @@ SEEDS_OUT_NPZ   = os.path.join(ROOT_DIR, "opt_seeds_lhs.npz")
 
 
 def build_bound_mask(NI: int, NJ: int, d_bound_grids: int) -> np.ndarray:
-    """Use the same boundary-distance rule as the prescreening map builder."""
+    """与 injectivity_prescreening_map.py:boundary_mask 同算法：距任意边界 ≥ d_bound_grids."""
     II, JJ = np.meshgrid(np.arange(NI), np.arange(NJ), indexing="ij")
     d = np.minimum(np.minimum(II, NI - 1 - II), np.minimum(JJ, NJ - 1 - JJ))
     return d >= d_bound_grids
@@ -35,6 +57,14 @@ def sample_constraint_aware_lhs(n_target: int, seed: int, oversample: int,
                                 NI: int, NJ: int, dx: float,
                                 bound_mask: np.ndarray,
                                 max_candidates: int = 5_000_000):
+\
+\
+\
+\
+\
+\
+\
+\
 
     inj_kept, prod_kept = [], []
     n_cand_total = 0
@@ -98,12 +128,12 @@ def sample_constraint_aware_lhs(n_target: int, seed: int, oversample: int,
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--n", type=int, default=200, help="target number of samples")
+    parser.add_argument("--n", type=int, default=200, help="目标样本数")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--oversample", type=int, default=30,
-                        help="LHS oversampling factor; increase it if the rejection rate is high")
+                        help="LHS over-sampling 倍数（rejection 率高时调大）")
     parser.add_argument("--src", default=SEEDS_SRC_NPZ,
-                        help="source NPZ file containing grid metadata")
+                        help="复制 grid metadata 来源 npz")
     parser.add_argument("--out", default=SEEDS_OUT_NPZ)
     args = parser.parse_args()
 
@@ -112,20 +142,20 @@ def main():
     print("=" * 70)
 
 
-    print(f"\n[1] Loading grid metadata: {args.src}")
+    print(f"\n[1] 加载 grid 元数据: {args.src}")
     src = np.load(args.src)
     NI = int(src["NI"]);  NJ = int(src["NJ"]);  NK = int(src["NK"])
     dx = float(src["dx"]); dy = float(src["dy"])
-    print(f"    NI x NJ x NK = {NI} x {NJ} x {NK}   dx={dx:.1f} m   dy={dy:.1f} m")
+    print(f"    NI×NJ×NK = {NI}×{NJ}×{NK}   dx≈{dx:.1f}m   dy≈{dy:.1f}m")
 
 
     d_bound_grids = max(1, int(np.ceil(D_BOUND_M / dx)))
-    print(f"\n[2] Recomputing boundary mask: D_BOUND_M={D_BOUND_M} m -> {d_bound_grids} grid cells")
+    print(f"\n[2] 重算 bound_mask: D_BOUND_M={D_BOUND_M}m → {d_bound_grids} 格")
     bound_mask = build_bound_mask(NI, NJ, d_bound_grids)
-    print(f"    Feasible cells: {bound_mask.sum():,} / {NI*NJ:,}  ({100*bound_mask.sum()/(NI*NJ):.1f}%)")
+    print(f"    可行格点: {bound_mask.sum():,} / {NI*NJ:,}  ({100*bound_mask.sum()/(NI*NJ):.1f}%)")
 
 
-    print(f"\n[3] LHS sampling: n_target={args.n}, oversample={args.oversample}x")
+    print(f"\n[3] LHS 采样: n_target={args.n}, oversample={args.oversample}x")
     t0 = time.time()
     inj_arr, prod_arr, stats = sample_constraint_aware_lhs(
         n_target    = args.n,
@@ -135,28 +165,28 @@ def main():
     )
     dt = time.time() - t0
     keep_rate = stats["n_kept"] / stats["n_candidate"]
-    print(f"    Candidates {stats['n_candidate']:,} -> kept {stats['n_kept']:,}"
+    print(f"    候选 {stats['n_candidate']:,}  →  保留 {stats['n_kept']:,}"
           f"  (rate {keep_rate*100:.2f}%, {dt:.1f}s)")
-    print(f"    Rejected by boundary: {stats['n_rejected_boundary']:,}")
-    print(f"    Rejected by spacing : {stats['n_rejected_spacing']:,}")
+    print(f"    拒绝-边界  : {stats['n_rejected_boundary']:,}")
+    print(f"    拒绝-井距  : {stats['n_rejected_spacing']:,}")
 
 
     all_wells = np.concatenate([inj_arr.reshape(-1, 2),
                                 prod_arr.reshape(-1, 2)], axis=0)
-    print(f"\n[4] Spatial coverage statistics:")
-    print(f"    All well i range [{all_wells[:,0].min()}, {all_wells[:,0].max()}]"
+    print(f"\n[4] 空间填充统计:")
+    print(f"    全部井位 i ∈ [{all_wells[:,0].min()}, {all_wells[:,0].max()}]"
           f" / [0, {NI-1}]")
-    print(f"    All well j range [{all_wells[:,1].min()}, {all_wells[:,1].max()}]"
+    print(f"    全部井位 j ∈ [{all_wells[:,1].min()}, {all_wells[:,1].max()}]"
           f" / [0, {NJ-1}]")
 
     bin_i = np.linspace(0, NI, 9).astype(int)
     bin_j = np.linspace(0, NJ, 9).astype(int)
     hist, _, _ = np.histogram2d(all_wells[:,0], all_wells[:,1], bins=[bin_i, bin_j])
-    print(f"    8 x 8 bin histogram: min={int(hist.min())}, max={int(hist.max())}, "
-          f"mean={hist.mean():.1f}  (more uniform layouts are closer to the mean)")
+    print(f"    8×8 bin 直方图: min={int(hist.min())}, max={int(hist.max())}, "
+          f"mean={hist.mean():.1f}  (越均匀越接近 mean)")
 
 
-    print(f"\n[5] Saving: {args.out}")
+    print(f"\n[5] 保存: {args.out}")
 
     np.savez_compressed(
         args.out,

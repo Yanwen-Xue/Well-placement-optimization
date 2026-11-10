@@ -1,3 +1,15 @@
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
 
 
 import os, json, time, logging
@@ -11,7 +23,9 @@ from cmg_runner import (evaluate, OPT_RUNS_DIR, SIM_YEARS_FINAL)
 from objectives import (compute_objectives, normalise_objectives,
                         check_spacing, check_boundary, PENALTY_VALUE)
 
+# Make a clean checkout runnable before configuring the file logger.
 os.makedirs(OPT_RUNS_DIR, exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -46,7 +60,7 @@ USE_OPT_PERM_ALIGN = True
 USE_EARLY_STOP = True
 
 
-CKPT_INTERVAL = 5
+CKPT_INTERVAL = int(os.environ.get("CKPT_INTERVAL", "5"))
 NSGA3_FINAL_K = 16
 
 
@@ -70,12 +84,12 @@ BOUND_MARGIN = 20
 SURROGATE_DEFAULT = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "opt_runs_lhs_doe",
-    "surrogate_model_0_543.joblib",
+    "component_f3_model_0_623_official_log_20260813.joblib",
 )
 
 
 def _eval_worker(args):
-    """Worker for parallel evaluation; top-level so ProcessPoolExecutor can pickle it."""
+    """Top-level worker so ProcessPoolExecutor can pickle it."""
     rid, inj, prod, grid_top, grid_bot, sim_years, cleanup, bound_mask, dx, gen_subdir, local_rid = args
     result = evaluate(rid, inj, prod, grid_top,
                       sim_years=sim_years, cleanup=cleanup,
@@ -91,6 +105,14 @@ def _eval_worker(args):
 
 
 def _generate_reference_points(M, p):
+\
+\
+\
+\
+\
+\
+\
+\
 
     def _enum(remaining, n_vars):
         if n_vars == 1:
@@ -202,6 +224,14 @@ class HybridNSGAIII:
 
 
     def _align_to_target(self, target_x, source_x):
+\
+\
+\
+\
+\
+\
+\
+\
 
         s = np.asarray(source_x, dtype=float).copy()
         if not self.use_opt_perm_align:
@@ -231,7 +261,10 @@ class HybridNSGAIII:
         self.inj_seeds  = data["inj_wells"]
         self.prod_seeds = data["prod_wells"]
         self.bound_mask = data["bound_mask"].astype(bool)
-        self.grid_top   = data["grid_top_2d"]
+        # The compact public search seed contains only geometry and the
+        # feasibility mask.  The grid-top field is needed only for a direct
+        # full-physics run, so keep it optional for surrogate-only searches.
+        self.grid_top = data["grid_top_2d"] if "grid_top_2d" in data else None
 
 
         self.grid_bot   = data["grid_bot_2d"] if "grid_bot_2d" in data else None
@@ -352,7 +385,7 @@ class HybridNSGAIII:
             obj = self._surrogate_predict_pop(np.asarray([x], dtype=float))[0]
             disp_id = f"{gen_subdir}/run_{local_rid:03d}" if gen_subdir else "surrogate"
             log.info(
-                "[%s] %s  F1=%.4f F2_plume_area=%.4f km2 F3_pressure_cv=%.6f  backend=surrogate",
+                "[%s] %s  F1=%.4f F2_plume_km2=%.4f F3_pressure_cv=%.6f  backend=surrogate",
                 tag,
                 disp_id,
                 obj[0],
@@ -360,6 +393,12 @@ class HybridNSGAIII:
                 obj[2],
             )
             return obj
+
+        if self.grid_top is None:
+            raise ValueError(
+                "Full-physics evaluation requires grid_top_2d in the seed file; "
+                "the compact public search seed is surrogate-only."
+            )
 
         inj, prod = self._decode(x)
         rid       = self.run_id
@@ -376,7 +415,7 @@ class HybridNSGAIII:
             D_INJ_INJ_M, D_PROD_PROD_M, D_INJ_PROD_M,
         )
         disp_id = f"{gen_subdir}/run_{local_rid:03d}" if gen_subdir else f"run_{rid:05d}"
-        log.info("[%s] %s  F1=%.4f F2_plume_area=%.4f km2 F3_pressure_cv=%.6f ok=%s  t=%.0fs",
+        log.info("[%s] %s  F1=%.4f F2_plume_km2=%.4f F3_pressure_cv=%.6f ok=%s  t=%.0fs",
                  tag, disp_id, F1, F2, F3, feas, result["elapsed_s"])
         return np.array([F1, F2, F3])
 
@@ -450,7 +489,17 @@ class HybridNSGAIII:
         return [fr for fr in fronts if fr]
 
 
-    def _nsga3_select(self, combined_pop, combined_objs, n_keep):
+    def _nsga3_select(self, combined_pop, combined_objs, n_keep, rng):
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
 
         fronts   = self._nondominated_sort(combined_objs)
         selected = []
@@ -534,10 +583,12 @@ class HybridNSGAIII:
             while len(chosen) < k and lf_set:
 
                 lf_assoc = [assoc[idx] for idx in lf_set]
-                active_refs = list(set(lf_assoc))
+                # Keep the candidate reference IDs in a stable order before
+                # applying the seeded tie break.
+                active_refs = sorted(set(lf_assoc))
                 min_rho = min(rho[j] for j in active_refs)
                 cands_ref = [j for j in active_refs if rho[j] == min_rho]
-                chosen_ref = cands_ref[np.random.randint(len(cands_ref))]
+                chosen_ref = cands_ref[int(rng.integers(len(cands_ref)))]
 
 
                 assoc_lf = [idx for idx in lf_set if assoc[idx] == chosen_ref]
@@ -546,7 +597,7 @@ class HybridNSGAIII:
                     best = min(assoc_lf,
                                key=lambda idx: dist_to_ref[idx, chosen_ref])
                 else:
-                    best = assoc_lf[np.random.randint(len(assoc_lf))]
+                    best = assoc_lf[int(rng.integers(len(assoc_lf)))]
 
                 chosen.append(best)
                 rho[chosen_ref] += 1
@@ -564,14 +615,14 @@ class HybridNSGAIII:
         else:
             sub = objs[front]
             for m in range(sub.shape[1]):
-                idx = np.argsort(sub[:, m])
+                idx = np.argsort(sub[:, m], kind="stable")
                 cd[idx[0]] = cd[idx[-1]] = np.inf
                 span = sub[idx[-1], m] - sub[idx[0], m]
                 if span == 0:
                     continue
                 for kk in range(1, n - 1):
                     cd[idx[kk]] += (sub[idx[kk+1], m] - sub[idx[kk-1], m]) / span
-        idx = np.argsort(-cd)
+        idx = np.argsort(-cd, kind="stable")
         return [front[i] for i in idx[:k]]
 
 
@@ -715,7 +766,15 @@ class HybridNSGAIII:
 
         return selected[:k]
 
-    def _save_checkpoint(self, gen, pop, objs):
+    def _save_checkpoint(
+        self,
+        gen,
+        pop,
+        objs,
+        rng=None,
+        stop_pending_at=None,
+        stop_pending_hv=None,
+    ):
         path = os.path.join(OPT_RUNS_DIR, f"ckpt_gen{gen:04d}.npz")
         kw = dict(
             gen=gen,
@@ -723,7 +782,23 @@ class HybridNSGAIII:
             objs=objs,
             run_id=self.run_id,
             surrogate_path=np.array("" if self.surrogate_path is None else self.surrogate_path),
+            mu_F=np.array(self.mu_F, dtype=float),
+            mu_CR=np.array(self.mu_CR, dtype=float),
+            stop_pending_at=np.array(
+                -1 if stop_pending_at is None else int(stop_pending_at),
+                dtype=int,
+            ),
+            stop_pending_hv=np.array(
+                np.nan if stop_pending_hv is None else float(stop_pending_hv),
+                dtype=float,
+            ),
         )
+        if rng is not None:
+            # JSON keeps the Generator state portable and avoids pickle-based
+            # loading when checkpoints are opened with allow_pickle=False.
+            kw["rng_state_json"] = np.array(
+                json.dumps(rng.bit_generator.state, sort_keys=True)
+            )
         if self.hv_ref is not None:
             kw["hv_ref"] = self.hv_ref
         if self.hv_history:
@@ -741,14 +816,16 @@ class HybridNSGAIII:
         objs   = data["objs"]
         run_id = int(data["run_id"])
         extras = {k: data[k] for k in ("hv_ref", "hv_history",
-                                       "front_size_history", "obj_min_history")
+                                       "front_size_history", "obj_min_history",
+                                       "mu_F", "mu_CR", "stop_pending_at",
+                                       "stop_pending_hv", "rng_state_json")
                   if k in data.files}
         return gen, pop, objs, run_id, extras
 
 
     def run(self, resume_ckpt=None):
         log.info("=" * 70)
-        log.info("CO2 well-placement optimization started (hybrid NSGA-III): seeds=%s", self.seeds_path)
+        log.info("CO2 well-layout optimization (Hybrid NSGA-III): seeds=%s", self.seeds_path)
         log.info("  sim_years=%dyr  N_POP=%d  MAX_GEN=%d  N_PARALLEL=%d",
                  self.sim_years, N_POP, N_GEN, N_PARALLEL)
         log.info("  evaluation=%s",
@@ -764,6 +841,8 @@ class HybridNSGAIII:
         log.info("=" * 70)
 
         rng = np.random.default_rng(self.random_seed)
+        stop_pending_at = None
+        stop_pending_hv = None
 
         if resume_ckpt and os.path.exists(resume_ckpt):
             start_gen, pop, objs, self.run_id, extras = self.load_checkpoint(resume_ckpt)
@@ -774,7 +853,25 @@ class HybridNSGAIII:
                 self.hv_history         = list(extras["hv_history"])
                 self.front_size_history = list(extras["front_size_history"])
                 self.obj_min_history    = [list(r) for r in extras["obj_min_history"]]
-            log.info("Resumed from checkpoint: gen=%d  run_id=%d  hv_history_len=%d",
+            if "mu_F" in extras:
+                self.mu_F = float(np.asarray(extras["mu_F"]).item())
+            if "mu_CR" in extras:
+                self.mu_CR = float(np.asarray(extras["mu_CR"]).item())
+            if "stop_pending_at" in extras:
+                pending_at = int(np.asarray(extras["stop_pending_at"]).item())
+                stop_pending_at = None if pending_at < 0 else pending_at
+            if "stop_pending_hv" in extras:
+                pending_hv = float(np.asarray(extras["stop_pending_hv"]).item())
+                stop_pending_hv = None if not np.isfinite(pending_hv) else pending_hv
+            if "rng_state_json" in extras:
+                state_json = np.asarray(extras["rng_state_json"]).item()
+                rng.bit_generator.state = json.loads(str(state_json))
+            else:
+                log.warning(
+                    "Checkpoint has no RNG state; resumed stochastic search is not "
+                    "bitwise-continuous. Start a fresh seeded run for exact reproduction."
+                )
+            log.info("Resumed checkpoint: gen=%d  run_id=%d  hv_history_length=%d",
                      start_gen, self.run_id, len(self.hv_history))
         else:
             start_gen = 0
@@ -795,7 +892,7 @@ class HybridNSGAIII:
                 self.hv_ref = vmax + HV_REF_SLACK * span
             else:
                 self.hv_ref = np.full(N_OBJ, PENALTY_VALUE)
-            log.info("HV reference point fixed: %s",
+            log.info("Fixed HV reference point: %s",
                      np.array2string(self.hv_ref, precision=4))
 
 
@@ -805,12 +902,10 @@ class HybridNSGAIII:
             self.front_size_history.append(fs0)
             self.obj_min_history.append(om0.tolist())
             log.info("Initial HV=%.4e  |front0|=%d", hv0, fs0)
-            self._save_checkpoint(0, pop, objs)
+            self._save_checkpoint(0, pop, objs, rng=rng)
 
 
         gen             = start_gen
-        stop_pending_at = None
-        stop_pending_hv = None
 
         while gen < N_GEN:
             t0        = time.time()
@@ -833,7 +928,9 @@ class HybridNSGAIII:
 
             combined_pop  = np.vstack([pop, trials])
             combined_objs = np.vstack([objs, trial_objs])
-            pop, objs, sel_idx = self._nsga3_select(combined_pop, combined_objs, N_POP)
+            pop, objs, sel_idx = self._nsga3_select(
+                combined_pop, combined_objs, N_POP, rng
+            )
 
 
             if self.use_de:
@@ -851,8 +948,8 @@ class HybridNSGAIII:
             self.front_size_history.append(fs)
             self.obj_min_history.append(om.tolist())
 
-            log.info("Gen %3d/%d  t=%.0fs  |front0|=%d  HV=%.4e  "
-                     "F1=%.4f  F2_plume_area=%.6f km2  F3_pressure_cv=%.6f  "
+            log.info("Gen %3d/%d  t=%.0fs  |front|=%d  HV=%.4e  "
+                     "F1=%.4f  F2_plume_km2=%.6f  F3_pressure_cv=%.6f  "
                      "mu_F=%.3f mu_CR=%.3f",
                      gen + 1, N_GEN, elapsed, fs, hv,
                      om[0], om[1], om[2],
@@ -879,12 +976,26 @@ class HybridNSGAIII:
                 elif gens_since >= VALIDATION_WINDOW:
                     log.info("Validation window passed; stop at gen=%d", gen + 1)
                     if (gen + 1) % CKPT_INTERVAL != 0:
-                        self._save_checkpoint(gen + 1, pop, objs)
+                        self._save_checkpoint(
+                            gen + 1,
+                            pop,
+                            objs,
+                            rng=rng,
+                            stop_pending_at=stop_pending_at,
+                            stop_pending_hv=stop_pending_hv,
+                        )
                     gen += 1
                     break
 
             if (gen + 1) % CKPT_INTERVAL == 0:
-                self._save_checkpoint(gen + 1, pop, objs)
+                self._save_checkpoint(
+                    gen + 1,
+                    pop,
+                    objs,
+                    rng=rng,
+                    stop_pending_at=stop_pending_at,
+                    stop_pending_hv=stop_pending_hv,
+                )
             gen += 1
 
         fronts = self._nondominated_sort(objs)
@@ -896,7 +1007,14 @@ class HybridNSGAIII:
         final_pop = full_pop[rep_idx]
         final_objs = full_objs[rep_idx]
 
-        self._save_checkpoint(gen, pop, objs)
+        self._save_checkpoint(
+            gen,
+            pop,
+            objs,
+            rng=rng,
+            stop_pending_at=stop_pending_at,
+            stop_pending_hv=stop_pending_hv,
+        )
         np.savez(
             os.path.join(OPT_RUNS_DIR, "ckpt_final_population.npz"),
             gen=gen,
@@ -907,6 +1025,9 @@ class HybridNSGAIII:
             representative_pop=final_pop,
             representative_objs=final_objs,
             surrogate_path=np.array("" if self.surrogate_path is None else self.surrogate_path),
+            mu_F=np.array(self.mu_F, dtype=float),
+            mu_CR=np.array(self.mu_CR, dtype=float),
+            rng_state_json=np.array(json.dumps(rng.bit_generator.state, sort_keys=True)),
         )
         self._report(full_pop, full_objs, filename="full_pareto_solutions.json")
         self._report(final_pop, final_objs, filename="pareto_solutions.json")
@@ -922,7 +1043,7 @@ class HybridNSGAIII:
                     "F1_pressure_rise": float(obj[0]),
                     "pressure_rise_pct": float(obj[0] * 100),
                     "F2_plume_area_sg0p1_km2": float(obj[1]),
-                    "F3_pressure_heterogeneity_cv": float(obj[2]),
+                    "F3_pressure_CV_std_over_mean": float(obj[2]),
                     "evaluation_backend": (
                         "surrogate" if self.surrogate_model is not None
                         else "high_fidelity_simulation"
